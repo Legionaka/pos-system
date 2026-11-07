@@ -10,7 +10,7 @@ type RegisterPageProps = {
 
 export default function RegisterPage({ searchParams }: RegisterPageProps) {
   return (
-    <AuthShell>
+    <AuthShell variant="figma">
       <Suspense fallback={<AuthLoading />}>
         <RegisterContent searchParams={searchParams} />
       </Suspense>

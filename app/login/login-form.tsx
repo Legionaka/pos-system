@@ -30,34 +30,36 @@ export function LoginForm({ setupComplete = false }: { setupComplete?: boolean }
       )}
 
       <form className="auth-form" action={action} noValidate>
-        <div className="auth-field">
-          <label htmlFor="login-email">Email address</label>
-          <input
-            id="login-email"
-            name="email"
-            type="email"
-            autoComplete="email"
-            placeholder="you@store.com"
-            required
-            aria-invalid={Boolean(state?.fieldErrors?.email?.length)}
-            aria-describedby={state?.fieldErrors?.email?.length ? 'login-email-error' : undefined}
-          />
-          <FieldError id="login-email-error" errors={state?.fieldErrors?.email} />
-        </div>
+        <div className="auth-credentials">
+          <div className="auth-field">
+            <label htmlFor="login-email">Email address</label>
+            <input
+              id="login-email"
+              name="email"
+              type="email"
+              autoComplete="email"
+              placeholder="you@store.com"
+              required
+              aria-invalid={Boolean(state?.fieldErrors?.email?.length)}
+              aria-describedby={state?.fieldErrors?.email?.length ? 'login-email-error' : undefined}
+            />
+            <FieldError id="login-email-error" errors={state?.fieldErrors?.email} />
+          </div>
 
-        <div className="auth-field">
-          <label htmlFor="login-password">Password</label>
-          <input
-            id="login-password"
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            placeholder="Enter your password"
-            required
-            aria-invalid={Boolean(state?.fieldErrors?.password?.length)}
-            aria-describedby={state?.fieldErrors?.password?.length ? 'login-password-error' : undefined}
-          />
-          <FieldError id="login-password-error" errors={state?.fieldErrors?.password} />
+          <div className="auth-field">
+            <label htmlFor="login-password">Password</label>
+            <input
+              id="login-password"
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              placeholder="Enter your password"
+              required
+              aria-invalid={Boolean(state?.fieldErrors?.password?.length)}
+              aria-describedby={state?.fieldErrors?.password?.length ? 'login-password-error' : undefined}
+            />
+            <FieldError id="login-password-error" errors={state?.fieldErrors?.password} />
+          </div>
         </div>
 
         <div className="auth-form-helper">

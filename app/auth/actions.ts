@@ -47,7 +47,7 @@ export async function signInAction(
 
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
-    .select('active')
+    .select('active, role')
     .eq('id', data.user.id)
     .maybeSingle();
 
@@ -56,7 +56,13 @@ export async function signInAction(
     return { message: 'This account cannot access the store. Contact the store owner.' };
   }
 
-  redirect('/login');
+  redirect(
+    profile.role === 'cashier'
+      ? '/pos'
+      : profile.role === 'manager' || profile.role === 'owner'
+        ? '/catalog'
+        : '/login',
+  );
 }
 
 export async function completeInviteAction(

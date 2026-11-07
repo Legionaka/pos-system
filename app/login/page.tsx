@@ -1,4 +1,5 @@
 import { Suspense } from 'react';
+import { redirect } from 'next/navigation';
 import { AuthLoading, AuthShell } from '@/app/auth/auth-shell';
 import { signOutAction } from '@/app/auth/actions';
 import { createClient } from '@/lib/supabase/server';
@@ -10,7 +11,7 @@ type LoginPageProps = {
 
 export default function LoginPage({ searchParams }: LoginPageProps) {
   return (
-    <AuthShell>
+    <AuthShell variant="figma">
       <Suspense fallback={<AuthLoading />}>
         <LoginContent searchParams={searchParams} />
       </Suspense>
@@ -42,6 +43,9 @@ async function LoginContent({ searchParams }: LoginPageProps) {
         </section>
       );
     }
+
+    if (profile.role === 'cashier') redirect('/pos');
+    if (profile.role === 'manager' || profile.role === 'owner') redirect('/catalog');
 
     const claimEmail = claimsData?.claims?.email;
     const email = typeof claimEmail === 'string' ? claimEmail : '';
