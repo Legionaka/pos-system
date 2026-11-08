@@ -228,6 +228,7 @@ export async function completeSaleAction(
     .order('created_at');
 
   revalidatePath('/pos');
+  revalidatePath('/sales');
   return {
     saleId,
     saleNumber: sale?.number,

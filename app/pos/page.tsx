@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { connection } from 'next/server';
 import { signOutAction } from '@/app/auth/actions';
 import { createClient } from '@/lib/supabase/server';
+import { getStoreSettings } from '@/lib/store-settings';
 import { PosScreen, type PosProduct, type PosCategory, type PosShift } from './pos-screen';
 
 export const metadata = { title: 'Point of sale | TrueMarket' };
@@ -58,6 +59,7 @@ async function PosContent() {
       .is('closed_at', null)
       .maybeSingle(),
   ]);
+  const store = await getStoreSettings();
 
   const products: PosProduct[] = productsResult.data ?? [];
   const categories: PosCategory[] = categoriesResult.data ?? [];
@@ -73,6 +75,8 @@ async function PosContent() {
       categories={categories}
       shift={shift}
       loadError={loadError}
+      storeName={store.storeName}
+      storeLogoUrl={store.logoUrl}
     />
   );
 }

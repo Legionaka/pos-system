@@ -1,7 +1,7 @@
 'use client';
 
 import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
-import Image from 'next/image';
+import Link from 'next/link';
 import { signOutAction } from '@/app/auth/actions';
 import { closeShiftAction, completeSaleAction, openShiftAction } from './actions';
 
@@ -36,12 +36,16 @@ export function PosScreen({
   categories,
   shift,
   loadError,
+  storeName,
+  storeLogoUrl,
 }: {
   cashierName: string;
   products: PosProduct[];
   categories: PosCategory[];
   shift: PosShift | null;
   loadError: string | null;
+  storeName: string;
+  storeLogoUrl: string | null;
 }) {
   const [search, setSearch] = useState('');
   const [categoryId, setCategoryId] = useState('all');
@@ -134,11 +138,12 @@ export function PosScreen({
   return (
     <main className="pos-app">
       <header className="pos-topbar">
-        <a className="pos-brand" href="/pos" aria-label="TrueMarket point of sale">
-          <Image src="/logo/truemarket-symbol-light.svg" alt="" width={36} height={36} priority />
-          <span>true<span>market</span></span>
+        <a className="pos-brand" href="/pos" aria-label={`${storeName} point of sale`}>
+          {storeLogoUrl ? <img src={storeLogoUrl} alt="" width={36} height={36} /> : <span className="pos-brand-mark">{storeName.slice(0, 1).toUpperCase()}</span>}
+          <span>{storeName}</span>
         </a>
         <div className="pos-user-area">
+          <Link className="pos-history-link" href="/sales">Sales history</Link>
           <div className="pos-user-copy"><span>Signed in as</span><strong>{cashierName}</strong></div>
           <form action={signOutAction}><button className="pos-signout" type="submit">Sign out</button></form>
         </div>
@@ -338,7 +343,7 @@ export function PosScreen({
           <button type="button" onClick={() => window.print()}>Print receipt</button>
           {saleState.receipt && (
             <section className="pos-receipt-paper" aria-label="Receipt preview">
-              <header><strong>TrueMarket</strong><span>Receipt #{saleState.receipt.number}</span><time>{saleState.receipt.createdAt}</time></header>
+              <header><strong>{storeName}</strong><span>Receipt #{saleState.receipt.number}</span><time>{saleState.receipt.createdAt}</time></header>
               <ul>
                 {saleState.receipt.items.map((item, index) => (
                   <li key={`${item.sku}-${index}`}>

@@ -23,7 +23,7 @@ export function InviteSetupForm({
   );
 
   return (
-    <section className="auth-card" aria-labelledby="register-title">
+    <section className="auth-card auth-card--invite" aria-labelledby="register-title">
       <header className="auth-card-header">
         <h1 id="register-title">Set up your account</h1>
         <p>Finish setting up your invited staff account.</p>

@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation';
 import { connection } from 'next/server';
 import { signOutAction } from '@/app/auth/actions';
 import { createClient } from '@/lib/supabase/server';
+import { getStoreSettings } from '@/lib/store-settings';
+import { WorkspaceShell } from '@/app/workspace/workspace-shell';
 import { ProductCatalog, type CatalogProduct, type CatalogCategory } from './product-catalog';
 
 export const metadata = { title: 'Product catalog | TrueMarket' };
@@ -49,17 +51,24 @@ async function CatalogContent() {
       .order('name'),
     supabase.from('categories').select('id, name').order('name'),
   ]);
+  const store = await getStoreSettings();
 
-  return (
+  const catalog = (
     <ProductCatalog
       managerName={profile.name || 'Manager'}
+      workspaceRole={profile.role === 'owner' ? 'Owner' : 'Manager'}
       products={(productsResult.data ?? []) as CatalogProduct[]}
       categories={(categoriesResult.data ?? []) as CatalogCategory[]}
       loadError={productsResult.error || categoriesResult.error
         ? 'Catalog data could not be loaded. Refresh this page or contact the store owner.'
         : null}
+      storeName={store.storeName}
+      storeLogoUrl={store.logoUrl}
     />
   );
+  return profile.role === 'owner'
+    ? <WorkspaceShell role="owner" name={profile.name || 'Owner'} store={store}>{catalog}</WorkspaceShell>
+    : catalog;
 }
 
 function CatalogLoading() {

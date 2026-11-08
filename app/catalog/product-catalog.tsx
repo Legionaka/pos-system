@@ -1,6 +1,6 @@
 'use client';
 
-import Image from 'next/image';
+import Link from 'next/link';
 import { useActionState, useMemo, useState } from 'react';
 import { signOutAction } from '@/app/auth/actions';
 import {
@@ -31,14 +31,20 @@ const money = (cents: number) => `R${(cents / 100).toFixed(2)}`;
 
 export function ProductCatalog({
   managerName,
+  workspaceRole,
   products,
   categories,
   loadError,
+  storeName,
+  storeLogoUrl,
 }: {
   managerName: string;
+  workspaceRole: 'Owner' | 'Manager';
   products: CatalogProduct[];
   categories: CatalogCategory[];
   loadError: string | null;
+  storeName: string;
+  storeLogoUrl: string | null;
 }) {
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
@@ -86,12 +92,13 @@ export function ProductCatalog({
   return (
     <main className="catalog-app">
       <header className="catalog-topbar">
-        <a className="catalog-brand" href="/catalog" aria-label="TrueMarket product catalog">
-          <Image src="/logo/truemarket-symbol-light.svg" alt="" width={34} height={34} priority />
-          <span>true<span>market</span></span>
+        <a className="catalog-brand" href="/catalog" aria-label={`${storeName} product catalog`}>
+          {storeLogoUrl ? <img src={storeLogoUrl} alt="" width={34} height={34} /> : <span className="catalog-brand-mark">{storeName.slice(0, 1).toUpperCase()}</span>}
+          <span>{storeName}</span>
         </a>
         <div className="catalog-user-area">
-          <div><span>Manager workspace</span><strong>{managerName}</strong></div>
+          <Link className="catalog-history-link" href="/sales">Sales history</Link>
+          <div><span>{workspaceRole} workspace</span><strong>{managerName}</strong></div>
           <form action={signOutAction}><button type="submit">Sign out</button></form>
         </div>
       </header>

@@ -32,8 +32,8 @@ export type Database = {
   public: {
     Tables: {
       profiles: Table<
-        { id: string; name: string | null; role: Database['public']['Enums']['app_role']; active: boolean; created_at: string },
-        { id: string; name?: string | null; role?: Database['public']['Enums']['app_role']; active?: boolean; created_at?: string },
+        { id: string; name: string | null; email: string | null; role: Database['public']['Enums']['app_role']; active: boolean; created_at: string },
+        { id: string; name?: string | null; email?: string | null; role?: Database['public']['Enums']['app_role']; active?: boolean; created_at?: string },
         { name?: string | null }
       >;
       categories: Table<
@@ -201,6 +201,20 @@ export type Database = {
         { key: string; enabled?: boolean; description?: string | null; updated_by?: string | null; updated_at?: string },
         [Relationship<'feature_flags_updated_by_fkey', ['updated_by'], 'profiles', ['id']>]
       >;
+      store_settings: Table<
+        { singleton: boolean; store_name: string; logo_path: string | null; updated_by: string | null; updated_at: string },
+        { singleton?: boolean; store_name?: string; logo_path?: string | null; updated_by?: string | null; updated_at?: string },
+        { store_name?: string; logo_path?: string | null; updated_by?: string | null; updated_at?: string }
+      >;
+      staff_invitations: RelTable<
+        { id: string; email: string; role: 'cashier' | 'manager'; status: 'pending' | 'accepted' | 'cancelled'; invited_by: string; user_id: string | null; created_at: string; accepted_at: string | null },
+        { id?: string; email: string; role: 'cashier' | 'manager'; status?: 'pending' | 'accepted' | 'cancelled'; invited_by: string; user_id?: string | null; created_at?: string; accepted_at?: string | null },
+        [Relationship<'staff_invitations_invited_by_fkey', ['invited_by'], 'profiles', ['id']>]
+      >;
+      feature_flag_registry: Table<
+        { key: string; description: string },
+        { key: string; description: string }
+      >;
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -218,6 +232,11 @@ export type Database = {
         Returns: undefined;
       };
       set_feature_flag: { Args: { p_enabled: boolean; p_key: string }; Returns: undefined };
+      owner_create_staff_invitation: { Args: { p_email: string; p_role: 'cashier' | 'manager' }; Returns: string };
+      owner_cancel_staff_invitation: { Args: { p_invitation_id: string }; Returns: undefined };
+      owner_update_store_settings: { Args: { p_store_name: string; p_logo_path: string | null }; Returns: undefined };
+      owner_dashboard_summary: { Args: Record<PropertyKey, never>; Returns: Json };
+      dev_activity_feed: { Args: { p_limit?: number }; Returns: Array<{ id: string; action: string; entity_type: string | null; created_at: string }> };
     };
     Enums: {
       app_role: 'cashier' | 'manager' | 'owner' | 'dev';

@@ -11,11 +11,11 @@ type LoginPageProps = {
 
 export default function LoginPage({ searchParams }: LoginPageProps) {
   return (
-    <AuthShell variant="figma">
-      <Suspense fallback={<AuthLoading />}>
-        <LoginContent searchParams={searchParams} />
-      </Suspense>
-    </AuthShell>
+    <Suspense fallback={<AuthLoading />}>
+      <AuthShell variant="figma">
+        <Suspense fallback={<AuthLoading />}><LoginContent searchParams={searchParams} /></Suspense>
+      </AuthShell>
+    </Suspense>
   );
 }
 
@@ -45,21 +45,10 @@ async function LoginContent({ searchParams }: LoginPageProps) {
     }
 
     if (profile.role === 'cashier') redirect('/pos');
-    if (profile.role === 'manager' || profile.role === 'owner') redirect('/catalog');
-
-    const claimEmail = claimsData?.claims?.email;
-    const email = typeof claimEmail === 'string' ? claimEmail : '';
-    return (
-      <section className="auth-notice-card" aria-labelledby="signed-in-title">
-        <span className="auth-role-pill">{profile.role.toUpperCase()}</span>
-        <h1 id="signed-in-title">You’re signed in</h1>
-        <p>{profile.name || email}</p>
-        <p>Your account is ready. The store workspace is the next step.</p>
-        <form action={signOutAction}>
-          <button className="auth-primary-button" type="submit">Sign out</button>
-        </form>
-      </section>
-    );
+    if (profile.role === 'manager') redirect('/catalog');
+    if (profile.role === 'owner') redirect('/owner');
+    if (profile.role === 'dev') redirect('/dev');
+    redirect('/login');
   }
 
   const setupComplete = params.setup === 'complete';

@@ -1,22 +1,18 @@
 import type { ReactNode } from 'react';
 import Image from 'next/image';
+import { getStoreSettings, type StoreSettings } from '@/lib/store-settings';
 
-function Brand({ compact = false }: { compact?: boolean }) {
+function Brand({ compact = false, store }: { compact?: boolean; store: StoreSettings }) {
   return (
     <div className={compact ? 'auth-brand-lockup auth-brand-lockup-compact' : 'auth-brand-lockup'}>
-      <Image
-        className="auth-brand-logo"
-        src="/logo/truemarket-horizontal-dark.svg"
-        alt="TrueMarket"
-        width={508}
-        height={192}
-        priority
-      />
+      {store.logoUrl ? <img className="auth-brand-logo auth-brand-logo--custom" src={store.logoUrl} alt={store.storeName} /> : store.storeName === 'TrueMarket' ? (
+        <Image className="auth-brand-logo" src="/logo/truemarket-horizontal-dark.svg" alt={store.storeName} width={508} height={192} priority />
+      ) : <span className="auth-custom-brand"><span>{store.storeName.slice(0, 1).toUpperCase()}</span><strong>{store.storeName}</strong></span>}
     </div>
   );
 }
 
-export function AuthShell({
+export async function AuthShell({
   children,
   variant = 'branded',
 }: {
@@ -24,12 +20,13 @@ export function AuthShell({
   variant?: 'branded' | 'figma';
 }) {
   const figma = variant === 'figma';
+  const store = await getStoreSettings();
 
   return (
     <main className={figma ? 'auth-page auth-page--figma' : 'auth-page'}>
       <aside className="auth-brand-panel">
         {figma && <div className="auth-brand-backdrop" aria-hidden="true" />}
-        <Brand />
+        <Brand store={store} />
         {figma ? (
           <>
             <div className="auth-brand-message auth-brand-message-figma">
@@ -68,7 +65,7 @@ export function AuthShell({
       </aside>
 
       <section className={figma ? 'auth-main auth-main--figma' : 'auth-main'}>
-        <div className="auth-mobile-header"><Brand compact /></div>
+        <div className="auth-mobile-header"><Brand compact store={store} /></div>
         <div className={figma ? 'auth-main-content auth-main-content--figma' : 'auth-main-content'}>
           {children}
         </div>

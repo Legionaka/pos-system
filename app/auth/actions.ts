@@ -59,9 +59,13 @@ export async function signInAction(
   redirect(
     profile.role === 'cashier'
       ? '/pos'
-      : profile.role === 'manager' || profile.role === 'owner'
+      : profile.role === 'manager'
         ? '/catalog'
-        : '/login',
+        : profile.role === 'owner'
+          ? '/owner'
+          : profile.role === 'dev'
+            ? '/dev'
+            : '/login',
   );
 }
 
