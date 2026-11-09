@@ -1700,3 +1700,73 @@ a {
 @media (max-width: 620px) { .workspace-app { display: block; } .workspace-sidebar { position: static; height: auto; padding: 12px 14px; border-right: 0; border-bottom: 1px solid var(--ws-line); } .workspace-brand { min-height: 38px; } .workspace-section-label, .workspace-sidebar-bottom { display: none; } .workspace-nav { display: flex; gap: 3px; overflow-x: auto; margin-top: 10px; } .workspace-nav a { flex: 0 0 auto; min-height: 36px; padding: 0 10px; font-size: 11px; } .workspace-main { padding: 25px 15px 44px; } .workspace-page-header { align-items: flex-start; margin-bottom: 21px; } .workspace-page-header h1 { font-size: 29px; } .workspace-page-header > div > p:last-child { font-size: 12px; } .workspace-metrics, .workspace-metrics--dev { grid-template-columns: 1fr; gap: 9px; } .workspace-metrics article { min-height: auto; padding: 15px 16px; gap: 6px; } .workspace-metrics article strong { font-size: 24px; } .workspace-card { padding: 16px; } .workspace-invite-form { grid-template-columns: 1fr; } .workspace-invite-form button { grid-column: auto; } .workspace-filters { align-items: stretch; flex-wrap: wrap; } .workspace-filters > span { align-self: end; } .workspace-activity-list article { grid-template-columns: 8px minmax(0, 1fr); } .workspace-activity-list time { grid-column: 2; } .workspace-feature-list article { align-items: flex-start; flex-direction: column; } .workspace-feature-list form { width: 100%; } .workspace-feature-list select { flex: 1; } }
 @media (max-width: 620px) { .workspace-collapse-button { display: none; } .workspace-nav-short { display: none !important; } .workspace-nav-label { display: inline; } }
 @media (prefers-reduced-motion: reduce) { .workspace-loading > span { animation: none; } }
+
+/* Inventory, reporting, and held-cart workflows */
+.workspace-manager-page { --ws-ink: #142c26; --ws-green: #103128; --ws-muted: #6d7d77; --ws-line: #e1e8e4; min-height: 100vh; background: #f4f7f5; color: #142c26; }
+.workspace-manager-page > .workspace-page { max-width: 1440px; margin: 0 auto; padding: 42px 34px 70px; }
+.workspace-manager-page .catalog-topbar nav { display: flex; gap: 18px; }
+.workspace-manager-page .catalog-topbar nav a { color: #315547; font-size: 12px; text-decoration: none; }
+.workspace-inventory-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.workspace-count-start, .workspace-count-actions, .workspace-report-filters { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.workspace-count-start > div { max-width: 650px; }
+.workspace-count-start h2 { margin: 4px 0 7px; font-size: 18px; }
+.workspace-count-start p:not(.workspace-eyebrow) { margin: 0; color: var(--ws-muted); font-size: 12px; line-height: 1.6; }
+.workspace-button--quiet { display: inline-flex; align-items: center; justify-content: center; border: 1px solid #dce5e0; background: #fff; color: #365b4b; text-decoration: none; }
+.workspace-count-form { display: grid; gap: 14px; }
+.workspace-count-input, .workspace-cost-input { width: 108px; min-height: 38px; padding: 0 9px; border: 1px solid #dce5e0; border-radius: 7px; color: #20372e; font: inherit; font-size: 12px; }
+.workspace-cost-input { width: 124px; }
+.workspace-count-actions { justify-content: flex-end; }
+.workspace-count-actions form { margin: 0; }
+.workspace-form-grid { display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap: 13px; }
+.workspace-delivery-form { display: grid; gap: 17px; }
+.workspace-delivery-list { display: grid; }
+.workspace-delivery-list details { padding: 14px 0; border-top: 1px solid #edf1ee; }
+.workspace-delivery-list details:first-child { border-top: 0; }
+.workspace-delivery-list summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; color: #29483b; font-size: 12px; }
+.workspace-delivery-list summary span { color: #809088; font-size: 11px; }
+.workspace-report-filters { align-items: flex-end; }
+.workspace-report-filters form { display: flex; align-items: flex-end; gap: 10px; margin: 0; }
+.workspace-report-filters label { display: grid; gap: 5px; color: #6e7d75; font-size: 10px; }
+.workspace-report-filters input { min-height: 42px; padding: 0 10px; border: 1px solid #dce5e0; border-radius: 7px; color: #20372e; font: inherit; font-size: 12px; }
+.workspace-report-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.workspace-report-metrics article { min-height: 120px; }
+.catalog-product-name { display: flex; align-items: center; gap: 9px; }
+.catalog-product-thumb, .catalog-image-edit img { flex: 0 0 auto; border: 1px solid #e1e8e3; border-radius: 7px; background: #f4f7f5; object-fit: cover; }
+.catalog-image-edit { display: flex; align-items: center; gap: 12px; }
+.catalog-image-edit label { display: flex; grid-auto-flow: column; align-items: center; gap: 7px; font-size: 11px; }
+.catalog-image-edit input { width: 15px; min-height: 15px; }
+.pos-product-image { width: 100%; height: 95px; margin: 8px 0; border-radius: 8px; background: #f4f7f5; object-fit: contain; }
+.pos-count-paused { padding: 11px; border: 1px solid #efc9b8; border-radius: 8px; background: #fff7f3; color: #974c31; font-size: 11px; line-height: 1.5; }
+.pos-held-sales { display: grid; gap: 8px; padding: 12px; border: 1px solid #e1e8e3; border-radius: 9px; background: #fff; }
+.pos-held-sales > strong { display: flex; justify-content: space-between; color: #375648; font-size: 12px; }
+.pos-held-sales > strong span { color: #809088; }
+.pos-held-sales > div { display: flex; align-items: center; gap: 6px; padding-top: 8px; border-top: 1px solid #edf1ee; }
+.pos-held-sales > div > span { flex: 1; display: grid; gap: 3px; min-width: 0; color: #344f43; font-size: 11px; }
+.pos-held-sales small { color: #819088; font-size: 9px; }
+.pos-held-sales button { min-height: 30px; padding: 0 9px; border: 1px solid #dce5e0; border-radius: 6px; background: #fff; color: #315b48; cursor: pointer; font: inherit; font-size: 10px; }
+.pos-held-sales form { margin: 0; }
+.pos-hold-form { display: flex; align-items: flex-end; gap: 8px; padding-top: 11px; }
+.pos-hold-form label { display: grid; flex: 1; gap: 5px; color: #6e7d75; font-size: 10px; }
+.pos-hold-form input { width: 100%; min-height: 38px; padding: 0 9px; border: 1px solid #dce5e0; border-radius: 7px; font: inherit; font-size: 11px; }
+.pos-hold-form .pos-button { min-height: 38px; white-space: nowrap; }
+.sales-receipt-refunds { display: grid; gap: 9px; padding: 12px 0; border-top: 1px dashed #cdd8d1; }
+.sales-receipt-refunds h3 { margin: 0; color: #496257; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+.sales-receipt-refunds article { display: grid; gap: 5px; padding: 8px 0; border-bottom: 1px solid #edf1ee; font-size: 11px; }
+.sales-receipt-refunds article > div { display: flex; justify-content: space-between; gap: 8px; }
+.sales-receipt-refunds time, .sales-receipt-refunds small, .sales-receipt-refunds p { color: #73827b; font-size: 10px; }
+.sales-receipt-refunds p { margin: 0; }
+@media (max-width: 900px) { .workspace-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .workspace-report-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 620px) {
+  .workspace-manager-page > .workspace-page { padding: 26px 14px 48px; }
+  .workspace-manager-page .catalog-topbar nav { gap: 10px; }
+  .workspace-manager-page .catalog-topbar nav a { font-size: 10px; }
+  .workspace-inventory-metrics, .workspace-report-metrics { grid-template-columns: 1fr; }
+  .workspace-count-start, .workspace-report-filters { align-items: stretch; flex-direction: column; }
+  .workspace-report-filters form { width: 100%; flex-wrap: wrap; }
+  .workspace-report-filters label { flex: 1; min-width: 130px; }
+  .workspace-form-grid { grid-template-columns: 1fr; }
+  .workspace-count-actions { align-items: stretch; flex-direction: column-reverse; }
+  .workspace-delivery-list summary { align-items: flex-start; flex-direction: column; }
+  .pos-hold-form { align-items: stretch; flex-direction: column; }
+}
+@media print { .sales-receipt-refunds { break-inside: avoid; } .sales-receipt-refunds h3, .sales-receipt-refunds strong, .sales-receipt-refunds p, .sales-receipt-refunds small { color: #111 !important; } }

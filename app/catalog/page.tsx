@@ -47,7 +47,7 @@ async function CatalogContent() {
   const [productsResult, categoriesResult] = await Promise.all([
     supabase
       .from('products')
-      .select('id, sku, barcode, name, price_cents, tax_category, stock_qty, reorder_at, active, category_id, updated_at')
+      .select('id, sku, barcode, name, price_cents, tax_category, stock_qty, reorder_at, active, category_id, image_path, updated_at')
       .order('name'),
     supabase.from('categories').select('id, name').order('name'),
   ]);
@@ -57,7 +57,7 @@ async function CatalogContent() {
     <ProductCatalog
       managerName={profile.name || 'Manager'}
       workspaceRole={profile.role === 'owner' ? 'Owner' : 'Manager'}
-      products={(productsResult.data ?? []) as CatalogProduct[]}
+      products={(productsResult.data ?? []).map((product) => ({ ...product, image_url: product.image_path && process.env.NEXT_PUBLIC_SUPABASE_URL ? `${process.env.NEXT_PUBLIC_SUPABASE_URL.replace(/\/$/, '')}/storage/v1/object/public/product-images/${product.image_path}` : null })) as CatalogProduct[]}
       categories={(categoriesResult.data ?? []) as CatalogCategory[]}
       loadError={productsResult.error || categoriesResult.error
         ? 'Catalog data could not be loaded. Refresh this page or contact the store owner.'

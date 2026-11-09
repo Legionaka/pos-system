@@ -44,12 +44,12 @@ export type Database = {
         {
           id: string; sku: string; barcode: string | null; name: string; price_cents: number;
           tax_category: Database['public']['Enums']['tax_category']; stock_qty: number; reorder_at: number;
-          active: boolean; category_id: string | null; created_at: string; updated_at: string;
+          active: boolean; category_id: string | null; image_path: string | null; created_at: string; updated_at: string;
         },
         {
           id?: string; sku: string; barcode?: string | null; name: string; price_cents: number;
           tax_category: Database['public']['Enums']['tax_category']; stock_qty?: number; reorder_at?: number;
-          active?: boolean; category_id?: string | null; created_at?: string; updated_at?: string;
+          active?: boolean; category_id?: string | null; image_path?: string | null; created_at?: string; updated_at?: string;
         },
         [Relationship<'products_category_id_fkey', ['category_id'], 'categories', ['id']>]
       >;
@@ -172,18 +172,40 @@ export type Database = {
       stock_movements: RelTable<
         {
           id: string; product_id: string; delta: number; reason: string; actor_id: string | null;
-          sale_id: string | null; refund_id: string | null; created_at: string;
+          sale_id: string | null; refund_id: string | null; delivery_id: string | null; count_id: string | null; created_at: string;
         },
         {
           id?: string; product_id: string; delta: number; reason: string; actor_id?: string | null;
-          sale_id?: string | null; refund_id?: string | null; created_at?: string;
+          sale_id?: string | null; refund_id?: string | null; delivery_id?: string | null; count_id?: string | null; created_at?: string;
         },
         [
           Relationship<'stock_movements_product_id_fkey', ['product_id'], 'products', ['id']>,
           Relationship<'stock_movements_actor_id_fkey', ['actor_id'], 'profiles', ['id']>,
           Relationship<'stock_movements_sale_id_fkey', ['sale_id'], 'sales', ['id']>,
           Relationship<'stock_movements_refund_id_fkey', ['refund_id'], 'refunds', ['id']>,
+          Relationship<'stock_movements_delivery_id_fkey', ['delivery_id'], 'inventory_deliveries', ['id']>,
+          Relationship<'stock_movements_count_id_fkey', ['count_id'], 'inventory_counts', ['id']>,
         ]
+      >;
+      inventory_deliveries: RelTable<
+        { id: string; supplier_name: string; delivery_date: string; reference: string | null; notes: string | null; received_by: string; created_at: string },
+        { id?: string; supplier_name: string; delivery_date?: string; reference?: string | null; notes?: string | null; received_by: string; created_at?: string },
+        [Relationship<'inventory_deliveries_received_by_fkey', ['received_by'], 'profiles', ['id']>]
+      >;
+      inventory_delivery_items: RelTable<
+        { id: string; delivery_id: string; product_id: string; product_name: string; sku: string; qty: number; unit_cost_cents: number; created_at: string },
+        { id?: string; delivery_id: string; product_id: string; product_name: string; sku: string; qty: number; unit_cost_cents: number; created_at?: string },
+        [Relationship<'inventory_delivery_items_delivery_id_fkey', ['delivery_id'], 'inventory_deliveries', ['id']>, Relationship<'inventory_delivery_items_product_id_fkey', ['product_id'], 'products', ['id']>]
+      >;
+      inventory_counts: RelTable<
+        { id: string; status: 'in_progress' | 'completed' | 'cancelled'; started_by: string; started_at: string; completed_by: string | null; completed_at: string | null },
+        { id?: string; status?: 'in_progress' | 'completed' | 'cancelled'; started_by: string; started_at?: string; completed_by?: string | null; completed_at?: string | null },
+        [Relationship<'inventory_counts_started_by_fkey', ['started_by'], 'profiles', ['id']>, Relationship<'inventory_counts_completed_by_fkey', ['completed_by'], 'profiles', ['id']>]
+      >;
+      inventory_count_items: RelTable<
+        { id: string; count_id: string; product_id: string; product_name: string; sku: string; expected_qty: number; counted_qty: number | null; counted_by: string | null; counted_at: string | null },
+        { id?: string; count_id: string; product_id: string; product_name: string; sku: string; expected_qty: number; counted_qty?: number | null; counted_by?: string | null; counted_at?: string | null },
+        [Relationship<'inventory_count_items_count_id_fkey', ['count_id'], 'inventory_counts', ['id']>, Relationship<'inventory_count_items_product_id_fkey', ['product_id'], 'products', ['id']>, Relationship<'inventory_count_items_counted_by_fkey', ['counted_by'], 'profiles', ['id']>]
       >;
       audit_logs: RelTable<
         {
@@ -237,6 +259,15 @@ export type Database = {
       owner_update_store_settings: { Args: { p_store_name: string; p_logo_path: string | null }; Returns: undefined };
       owner_dashboard_summary: { Args: Record<PropertyKey, never>; Returns: Json };
       dev_activity_feed: { Args: { p_limit?: number }; Returns: Array<{ id: string; action: string; entity_type: string | null; created_at: string }> };
+      receive_inventory_delivery: { Args: { p_delivery_date: string; p_items: Json; p_notes: string | null; p_reference: string | null; p_supplier_name: string }; Returns: string };
+      start_inventory_count: { Args: Record<PropertyKey, never>; Returns: string };
+      finish_inventory_count: { Args: { p_count_id: string; p_counts: Json }; Returns: undefined };
+      cancel_inventory_count: { Args: { p_count_id: string }; Returns: undefined };
+      save_held_sale: { Args: { p_items: Json; p_label: string | null; p_shift_id: string }; Returns: string };
+      update_held_sale: { Args: { p_held_sale_id: string; p_items: Json; p_label: string | null }; Returns: string };
+      complete_held_sale: { Args: { p_held_sale_id: string; p_items: Json; p_payments: Json }; Returns: string };
+      inventory_checkout_paused: { Args: Record<PropertyKey, never>; Returns: boolean };
+      sales_report: { Args: { p_from: string; p_to: string }; Returns: Json };
     };
     Enums: {
       app_role: 'cashier' | 'manager' | 'owner' | 'dev';

@@ -48,6 +48,7 @@ export type SaleHistoryEntry = {
     changeCents: number | null;
     reference: string | null;
   }>;
+  refunds: Array<{ number: number; reason: string; totalCents: number; createdAt: string; payments: Array<{ method: PaymentMethod; amountCents: number; reference: string | null }> }>;
 };
 
 const money = (cents: number) => `R${(cents / 100).toFixed(2)}`;
@@ -277,6 +278,7 @@ function Receipt({ entry, onClose, onRefundRecorded, store, canRefund }: {
         ))}
         {!entry.payments.length && entry.cashReceivedCents > 0 && <p>Cash received {money(entry.cashReceivedCents)} · Change {money(entry.changeCents)}</p>}
       </div>
+      {entry.status === 'partially_refunded' || entry.status === 'refunded' ? <section className="sales-receipt-refunds"><h3>Refund activity</h3>{entry.refunds.length ? entry.refunds.map((refund) => <article key={refund.number}><div><strong>Refund #{refund.number}</strong><time>{dateFormatter.format(new Date(refund.createdAt))}</time></div><p>{refund.reason}</p><strong>{money(refund.totalCents)}</strong>{refund.payments.map((payment, index) => <small key={`${payment.method}-${index}`}>{paymentLabels[payment.method]} payout{payment.reference ? ` · ${payment.reference}` : ''}: {money(payment.amountCents)}</small>)}</article>) : <p>Refunds have been recorded. Ask a manager for payout details.</p>}</section> : null}
       {canRefund && refundable && !refundOpen && (
         <div className="sales-refund-launch"><button className="sales-button sales-button--secondary" type="button" onClick={() => setRefundOpen(true)}>Refund items</button></div>
       )}

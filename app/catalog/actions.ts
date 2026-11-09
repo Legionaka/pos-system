@@ -75,6 +75,30 @@ export async function saveProductAction(
   if (!parsed.success) return { message: parsed.error.issues[0]?.message ?? 'Check the product details and try again.' };
 
   const value = parsed.data;
+  const image = formData.get('image');
+  const removeImage = formData.get('removeImage') === 'true';
+  let uploadedImagePath: string | null = null;
+  let existingImagePath: string | null = null;
+  if (image && !(image instanceof File)) return { message: 'Choose a PNG, JPEG, or WebP image.' };
+  if (image instanceof File && image.size > 2 * 1024 * 1024) return { message: 'Product images must be 2 MB or smaller.' };
+  if (image instanceof File && image.size > 0) {
+    const header = new Uint8Array(await image.slice(0, 12).arrayBuffer());
+    const valid = (image.type === 'image/png' && [137, 80, 78, 71, 13, 10, 26, 10].every((byte, index) => header[index] === byte))
+      || (image.type === 'image/jpeg' && header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff)
+      || (image.type === 'image/webp' && String.fromCharCode(...header.slice(0, 4)) === 'RIFF' && String.fromCharCode(...header.slice(8, 12)) === 'WEBP');
+    if (!valid) return { message: 'The image contents do not match a PNG, JPEG, or WebP file.' };
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(image.type)) return { message: 'Choose a PNG, JPEG, or WebP image.' };
+  }
+  if (value.id) {
+    const { data } = await supabase.from('products').select('image_path').eq('id', value.id).maybeSingle();
+    existingImagePath = data?.image_path ?? null;
+  }
+  if (image instanceof File && image.size > 0) {
+    const extension = image.type === 'image/jpeg' ? 'jpg' : image.type === 'image/png' ? 'png' : 'webp';
+    uploadedImagePath = `products/${crypto.randomUUID()}.${extension}`;
+    const { error } = await supabase.storage.from('product-images').upload(uploadedImagePath, image, { contentType: image.type, upsert: false });
+    if (error) return { message: 'The product image could not be uploaded. Try a smaller file.' };
+  }
   const product = {
     sku: value.sku,
     barcode: value.barcode || null,
@@ -84,18 +108,30 @@ export async function saveProductAction(
     reorder_at: value.reorderAt,
     active: value.active === 'true',
     category_id: value.categoryId || null,
+    image_path: uploadedImagePath ?? (removeImage ? null : existingImagePath),
   };
 
   const result = value.id
     ? await supabase.from('products').update(product).eq('id', value.id).select('id').maybeSingle()
     : await supabase.from('products').insert(product).select('id').single();
 
-  if (result.error?.code === '23505') return { message: 'That SKU or barcode is already assigned to another product.' };
-  if (result.error) return { message: 'The product could not be saved. Check the values and try again.' };
-  if (!result.data) return { message: 'Product not found or you do not have permission to edit it.' };
+  if (result.error?.code === '23505') {
+    if (uploadedImagePath) await supabase.storage.from('product-images').remove([uploadedImagePath]);
+    return { message: 'That SKU or barcode is already assigned to another product.' };
+  }
+  if (result.error) {
+    if (uploadedImagePath) await supabase.storage.from('product-images').remove([uploadedImagePath]);
+    return { message: 'The product could not be saved. Check the values and try again.' };
+  }
+  if (!result.data) {
+    if (uploadedImagePath) await supabase.storage.from('product-images').remove([uploadedImagePath]);
+    return { message: 'Product not found or you do not have permission to edit it.' };
+  }
+  if (existingImagePath && (uploadedImagePath || removeImage)) await supabase.storage.from('product-images').remove([existingImagePath]);
 
   revalidatePath('/catalog');
   revalidatePath('/pos');
+  revalidatePath('/inventory');
   return success(value.id ? 'Product changes saved.' : 'Product added. Set its opening stock with Adjust stock.');
 }
 

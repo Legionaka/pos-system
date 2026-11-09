@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { signOutAction } from '@/app/auth/actions';
-import { closeShiftAction, completeSaleAction, openShiftAction } from './actions';
+import { closeShiftAction, completeSaleAction, deleteHeldSaleAction, openShiftAction, saveHeldSaleAction } from './actions';
 
 export type PosProduct = {
   id: string;
@@ -15,10 +15,12 @@ export type PosProduct = {
   stock_qty: number;
   category_id: string | null;
   active: boolean;
+  image_url: string | null;
 };
 
 export type PosCategory = { id: string; name: string };
 export type PosShift = { id: string; opened_at: string; opening_cash_cents: number };
+export type PosHeldSale = { id: string; label: string | null; created_at: string; items: CartLine[] };
 type CartLine = { productId: string; qty: number };
 type PaymentMethod = 'cash' | 'card' | 'eft' | 'qr';
 
@@ -38,6 +40,8 @@ export function PosScreen({
   loadError,
   storeName,
   storeLogoUrl,
+  heldSales,
+  checkoutPaused,
 }: {
   cashierName: string;
   products: PosProduct[];
@@ -46,6 +50,8 @@ export function PosScreen({
   loadError: string | null;
   storeName: string;
   storeLogoUrl: string | null;
+  heldSales: PosHeldSale[];
+  checkoutPaused: boolean;
 }) {
   const [search, setSearch] = useState('');
   const [categoryId, setCategoryId] = useState('all');
@@ -58,6 +64,11 @@ export function PosScreen({
   const [shiftState, openAction, shiftPending] = useActionState(openShiftAction, null);
   const [closeShiftState, closeAction, closePending] = useActionState(closeShiftAction, null);
   const [showCloseShift, setShowCloseShift] = useState(false);
+  const [activeHeldSaleId, setActiveHeldSaleId] = useState<string | null>(null);
+  const [dismissedHoldVersion, setDismissedHoldVersion] = useState<string | null>(null);
+  const [holdLabel, setHoldLabel] = useState('');
+  const [holdRestoreError, setHoldRestoreError] = useState<string | null>(null);
+  const [holdState, saveHoldAction, holdPending] = useActionState(saveHeldSaleAction, null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -78,7 +89,8 @@ export function PosScreen({
   }, []);
 
   const showReceipt = Boolean(saleState?.saleId && saleState.saleId !== dismissedSaleId);
-  const activeCart = showReceipt ? [] : cart;
+  const holdWasSaved = Boolean(holdState?.ok && holdState.version && holdState.version !== dismissedHoldVersion);
+  const activeCart = showReceipt || holdWasSaved ? [] : cart;
 
   const filteredProducts = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase();
@@ -110,6 +122,15 @@ export function PosScreen({
     if (!shift || product.stock_qty < 1) return;
     if (showReceipt && saleState?.saleId) {
       setDismissedSaleId(saleState.saleId);
+      setActiveHeldSaleId(null);
+      setCart([{ productId: product.id, qty: 1 }]);
+      setCashReceived('');
+      setReference('');
+      return;
+    }
+    if (holdWasSaved) {
+      setDismissedHoldVersion(holdState?.version ?? null);
+      setActiveHeldSaleId(null);
       setCart([{ productId: product.id, qty: 1 }]);
       setCashReceived('');
       setReference('');
@@ -121,6 +142,25 @@ export function PosScreen({
       if (existing.qty >= product.stock_qty) return current;
       return current.map((line) => line.productId === product.id ? { ...line, qty: line.qty + 1 } : line);
     });
+  }
+
+  function resumeHeldSale(heldSale: PosHeldSale) {
+    const unavailable = heldSale.items.find((line) => {
+      const product = products.find((item) => item.id === line.productId);
+      return !product?.active || !product || product.stock_qty < line.qty;
+    });
+    if (unavailable) {
+      setHoldRestoreError('This cart contains an unavailable product or more units than are in stock. Discard it or adjust inventory and refresh.');
+      return;
+    }
+    setHoldRestoreError(null);
+    setActiveHeldSaleId(heldSale.id);
+    setCart(heldSale.items);
+    setDismissedHoldVersion(holdState?.version ?? null);
+    setDismissedSaleId(saleState?.saleId ?? null);
+    setCashReceived('');
+    setReference('');
+    setMethod('cash');
   }
 
   function setQuantity(productId: string, qty: number) {
@@ -218,9 +258,18 @@ export function PosScreen({
               <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.8" /><path d="m16 16 4.2 4.2" /></svg>
               <input
                 ref={searchInputRef}
+                autoFocus
                 type="search"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter') return;
+                  const scanned = products.find((product) => product.barcode === search.trim() || product.sku.toLocaleLowerCase() === search.trim().toLocaleLowerCase());
+                  if (!scanned) return;
+                  event.preventDefault();
+                  addProduct(scanned);
+                  setSearch('');
+                }}
                 placeholder="Search by name, SKU or barcode"
               />
               <kbd>/</kbd>
@@ -262,6 +311,7 @@ export function PosScreen({
                   aria-label={`${product.name}, ${money(product.price_cents)}, ${product.stock_qty} in stock`}
                 >
                   <span className="pos-product-topline"><span>{product.sku}</span><span className={product.stock_qty > 0 ? 'pos-stock' : 'pos-stock is-empty'}>{product.stock_qty > 0 ? `${product.stock_qty} in stock` : 'Out of stock'}</span></span>
+                  {product.image_url && <img className="pos-product-image" src={product.image_url} alt="" />}
                   <strong>{product.name}</strong>
                   <span className="pos-product-price">{money(product.price_cents)}</span>
                 </button>
@@ -275,6 +325,10 @@ export function PosScreen({
             <div><p className="pos-eyebrow">CURRENT TRANSACTION</p><h2 id="cart-title">Sale items</h2></div>
           <span className="pos-cart-count">{activeCart.reduce((sum, line) => sum + line.qty, 0)}</span>
           </div>
+
+          {checkoutPaused && <p className="pos-count-paused" role="status">Checkout is paused while a full-store stock count is in progress.</p>}
+          {holdRestoreError && <p className="pos-field-error" role="alert">{holdRestoreError}</p>}
+          {heldSales.length > 0 && <section className="pos-held-sales" aria-label="Held carts"><strong>Saved carts <span>{heldSales.length}</span></strong>{heldSales.map((held) => <div key={held.id}><span>{held.label || `Cart · ${new Intl.DateTimeFormat('en-ZA', { timeStyle: 'short', timeZone: 'Africa/Johannesburg' }).format(new Date(held.created_at))}`}<small>{held.items.reduce((sum, item) => sum + item.qty, 0)} items</small></span><button type="button" onClick={() => resumeHeldSale(held)}>Resume</button><form action={deleteHeldSaleAction}><input type="hidden" name="heldSaleId" value={held.id} /><button type="submit" aria-label={`Discard ${held.label || 'saved cart'}`}>Discard</button></form></div>)}</section>}
 
           {activeCart.length === 0 ? (
             <div className="pos-cart-empty"><span aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M10 4v12M4 10h12" /></svg></span><p>Your sale is empty</p><small>Add products from the catalog.</small></div>
@@ -296,6 +350,7 @@ export function PosScreen({
 
           <form action={completeAction} className="pos-checkout-form">
             <input type="hidden" name="items" value={JSON.stringify(activeCart.map((line) => ({ product_id: line.productId, qty: line.qty })))} />
+            {activeHeldSaleId && <input type="hidden" name="heldSaleId" value={activeHeldSaleId} />}
             <input type="hidden" name="method" value={method} />
             {method === 'cash' && <input type="hidden" name="reference" value="" />}
             {method !== 'cash' && <input type="hidden" name="cashReceived" value="" />}
@@ -304,7 +359,7 @@ export function PosScreen({
             {method === 'cash' && <div className="pos-total-row pos-rounding-row"><span>Cash rounding</span><span>{roundingCents < 0 ? '−' : '+'}{money(Math.abs(roundingCents))}</span></div>}
             <div className="pos-total-row pos-grand-total"><span>Total due</span><strong>{money(totalCents)}</strong></div>
 
-            <fieldset className="pos-payment-methods" disabled={!shift || salePending}>
+            <fieldset className="pos-payment-methods" disabled={!shift || checkoutPaused || salePending}>
               <legend>Payment method</legend>
               <div>
                 {(['cash', 'card', 'eft', 'qr'] as const).map((value) => (
@@ -318,21 +373,22 @@ export function PosScreen({
             {method === 'cash' ? (
               <div className="pos-payment-field">
                 <label htmlFor="cash-received">Cash received <span>(ZAR)</span></label>
-                <div className="pos-inline-field"><span aria-hidden="true">R</span><input id="cash-received" name="cashReceived" type="number" min="0" step="0.01" value={cashReceived} onChange={(event) => setCashReceived(event.target.value)} disabled={!shift || salePending} /></div>
+                <div className="pos-inline-field"><span aria-hidden="true">R</span><input id="cash-received" name="cashReceived" type="number" min="0" step="0.01" value={cashReceived} onChange={(event) => setCashReceived(event.target.value)} disabled={!shift || checkoutPaused || salePending} /></div>
                 {changeCents !== null && <p className="pos-change">Change due <strong>{money(changeCents)}</strong></p>}
               </div>
             ) : (
               <div className="pos-payment-field">
                 <label htmlFor="payment-reference">Reference <span>(optional)</span></label>
-                <input id="payment-reference" name="reference" type="text" maxLength={120} value={reference} onChange={(event) => setReference(event.target.value)} placeholder="Terminal or transfer reference" disabled={!shift || salePending} />
+                <input id="payment-reference" name="reference" type="text" maxLength={120} value={reference} onChange={(event) => setReference(event.target.value)} placeholder="Terminal or transfer reference" disabled={!shift || checkoutPaused || salePending} />
               </div>
             )}
 
             {saleState?.message && <p className="pos-field-error" role="alert">{saleState.message}</p>}
-            <button className="pos-button pos-complete-sale" type="submit" disabled={!shift || activeCart.length === 0 || salePending || (method === 'cash' && totalCents > 0 && (receivedCents === null || receivedCents < totalCents))}>
+            <button className="pos-button pos-complete-sale" type="submit" disabled={!shift || checkoutPaused || activeCart.length === 0 || salePending || (method === 'cash' && totalCents > 0 && (receivedCents === null || receivedCents < totalCents))}>
               {salePending ? 'Completing sale…' : 'Complete sale'}
             </button>
           </form>
+          {shift && activeCart.length > 0 && <form action={saveHoldAction} className="pos-hold-form"><input type="hidden" name="shiftId" value={shift.id} />{activeHeldSaleId && <input type="hidden" name="heldSaleId" value={activeHeldSaleId} />}<input type="hidden" name="items" value={JSON.stringify(activeCart.map((line) => ({ product_id: line.productId, qty: line.qty })))} /><label>Save cart label <input name="label" value={holdLabel} maxLength={80} onChange={(event) => setHoldLabel(event.target.value)} placeholder="Optional customer name" /></label><button className="pos-button pos-button--secondary" type="submit" disabled={holdPending || checkoutPaused}>{holdPending ? 'Saving cart…' : activeHeldSaleId ? 'Update saved cart' : 'Hold cart'}</button>{holdState?.message && !holdState.ok && <p className="pos-field-error" role="alert">{holdState.message}</p>}</form>}
         </aside>
       </div>
 

@@ -21,11 +21,13 @@ export type CatalogProduct = {
   reorder_at: number;
   active: boolean;
   category_id: string | null;
+  image_path: string | null;
+  image_url: string | null;
   updated_at: string;
 };
 
 export type CatalogCategory = { id: string; name: string };
-type ProductFilter = 'all' | 'active' | 'inactive';
+type ProductFilter = 'all' | 'active' | 'inactive' | 'low';
 
 const money = (cents: number) => `R${(cents / 100).toFixed(2)}`;
 
@@ -70,7 +72,8 @@ export function ProductCatalog({
       const categoryMatch = categoryFilter === 'all' || product.category_id === categoryFilter;
       const statusMatch = statusFilter === 'all'
         || (statusFilter === 'active' && product.active)
-        || (statusFilter === 'inactive' && !product.active);
+        || (statusFilter === 'inactive' && !product.active)
+        || (statusFilter === 'low' && product.active && product.stock_qty <= product.reorder_at);
       return searchMatch && categoryMatch && statusMatch;
     });
   }, [products, search, categoryFilter, statusFilter]);
@@ -97,6 +100,8 @@ export function ProductCatalog({
           <span>{storeName}</span>
         </a>
         <div className="catalog-user-area">
+          <Link className="catalog-history-link" href="/inventory">Inventory</Link>
+          <Link className="catalog-history-link" href="/reports">Reports</Link>
           <Link className="catalog-history-link" href="/sales">Sales history</Link>
           <div><span>{workspaceRole} workspace</span><strong>{managerName}</strong></div>
           <form action={signOutAction}><button type="submit">Sign out</button></form>
@@ -156,9 +161,9 @@ export function ProductCatalog({
               </select>
             </label>
             <div className="catalog-status-tabs" aria-label="Filter by product status">
-              {(['all', 'active', 'inactive'] as const).map((filter) => (
+              {(['all', 'active', 'inactive', 'low'] as const).map((filter) => (
                 <button className={statusFilter === filter ? 'is-selected' : ''} key={filter} type="button" onClick={() => setStatusFilter(filter)}>
-                  {filter === 'all' ? 'All' : filter === 'active' ? 'Active' : 'Inactive'}
+                  {filter === 'all' ? 'All' : filter === 'active' ? 'Active' : filter === 'inactive' ? 'Inactive' : 'Low stock'}
                 </button>
               ))}
             </div>
@@ -181,7 +186,7 @@ export function ProductCatalog({
                     const lowStock = product.stock_qty <= product.reorder_at;
                     return (
                       <tr key={product.id}>
-                        <td><div className="catalog-product-name"><strong>{product.name}</strong><span>{product.sku}{product.barcode ? ` · ${product.barcode}` : ''}</span></div></td>
+                        <td><div className="catalog-product-name">{product.image_url && <img className="catalog-product-thumb" src={product.image_url} alt="" width={40} height={40} />}<span><strong>{product.name}</strong><small>{product.sku}{product.barcode ? ` · ${product.barcode}` : ''}</small></span></div></td>
                         <td>{category?.name ?? <span className="catalog-unassigned">Unassigned</span>}</td>
                         <td className="catalog-price">{money(product.price_cents)}</td>
                         <td><span className={`catalog-stock${lowStock ? ' is-low' : ''}`}>{product.stock_qty}</span>{lowStock && <span className="catalog-stock-hint"> / reorder at {product.reorder_at}</span>}</td>
@@ -243,7 +248,7 @@ function ProductEditor({
     <div className="catalog-modal-backdrop">
       <section className="catalog-modal" role="dialog" aria-modal="true" aria-labelledby="product-editor-title">
         <header><div><p className="catalog-eyebrow">PRODUCT DETAILS</p><h2 id="product-editor-title">{product ? 'Edit product' : 'Add product'}</h2></div><button className="catalog-modal-close" type="button" aria-label="Close" onClick={onClose}><svg aria-hidden="true" viewBox="0 0 20 20"><path d="m5 5 10 10M15 5 5 15" /></svg></button></header>
-        <form action={action} className="catalog-editor-form">
+        <form action={action} className="catalog-editor-form" encType="multipart/form-data">
           <input type="hidden" name="id" value={product?.id ?? ''} />
           <div className="catalog-form-grid">
             <label>Product name<input name="name" required minLength={2} maxLength={120} defaultValue={product?.name ?? ''} placeholder="e.g. Full cream milk 2 L" /></label>
@@ -254,7 +259,9 @@ function ProductEditor({
             <label>Reorder alert at<input name="reorderAt" type="number" min="0" step="1" required defaultValue={product?.reorder_at ?? 5} /><small>Show a warning when stock reaches this quantity.</small></label>
             <label>Category<select name="categoryId" defaultValue={product?.category_id ?? ''}><option value="">Unassigned</option>{categories.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label>
             <label>Availability<select name="active" defaultValue={product?.active === false ? 'false' : 'true'}><option value="true">Active — available for sale</option><option value="false">Inactive — hidden from POS</option></select></label>
+            <label>Product image <span>(optional, PNG/JPEG/WebP, 2 MB max)</span><input name="image" type="file" accept="image/png,image/jpeg,image/webp" /></label>
           </div>
+          {product?.image_url && <div className="catalog-image-edit"><img src={product.image_url} alt={`${product.name} current image`} width={72} height={72} /><label><input type="checkbox" name="removeImage" value="true" /> Remove current image</label></div>}
           {!product && <p className="catalog-form-note">The product will start at zero stock. After saving, choose Adjust stock to enter the opening quantity with a reason.</p>}
           {state?.message && !state.ok && <p className="catalog-form-error" role="alert">{state.message}</p>}
           <footer><button className="catalog-button catalog-button--quiet" type="button" onClick={onClose}>Cancel</button><button className="catalog-button" type="submit" disabled={pending}>{pending ? 'Saving…' : product ? 'Save changes' : 'Add product'}</button></footer>

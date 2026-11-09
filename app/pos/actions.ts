@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
+import type { Json } from '@/lib/supabase/database';
 import { createClient } from '@/lib/supabase/server';
 
 const moneyText = z.string().trim().regex(/^\d{1,9}(?:\.\d{1,2})?$/, 'Enter an amount such as 0.00.');
@@ -34,6 +35,8 @@ export type PosActionState = {
   saleNumber?: number;
   receipt?: SaleReceipt;
 } | null;
+
+export type HoldActionState = { ok: boolean; message: string; holdId?: string; version?: string } | null;
 
 export type ShiftActionState = { message?: string } | null;
 
@@ -155,6 +158,9 @@ export async function completeSaleAction(
   }
 
   const itemPayload = [...quantities].map(([product_id, qty]) => ({ product_id, qty }));
+  const heldSaleId = formData.get('heldSaleId');
+  const parsedHeldSaleId = heldSaleId ? z.string().uuid().safeParse(heldSaleId) : null;
+  if (heldSaleId && !parsedHeldSaleId?.success) return { message: 'The held sale identifier is invalid. Refresh and try again.' };
   const productIds = itemPayload.map((item) => item.product_id);
   const { data: products, error: productsError } = await cashier.supabase
     .from('products')
@@ -201,15 +207,22 @@ export async function completeSaleAction(
     .maybeSingle();
   if (!shift) return { message: 'Open a cashier shift before completing a sale.' };
 
-  const { data: saleId, error: saleError } = await cashier.supabase.rpc('complete_sale', {
-    p_shift_id: shift.id,
-    p_items: itemPayload,
-    p_payments: payments,
-  });
+  const { data: saleId, error: saleError } = parsedHeldSaleId?.success
+    ? await cashier.supabase.rpc('complete_held_sale', {
+      p_held_sale_id: parsedHeldSaleId.data,
+      p_items: itemPayload as unknown as Json,
+      p_payments: payments as unknown as Json,
+    })
+    : await cashier.supabase.rpc('complete_sale', {
+      p_shift_id: shift.id,
+      p_items: itemPayload,
+      p_payments: payments,
+    });
 
   if (saleError || !saleId) {
     const detail = saleError?.message.toLowerCase() ?? '';
     if (detail.includes('insufficient stock')) return { message: 'Stock changed while you were checking out. Review the cart and try again.' };
+    if (detail.includes('stock count')) return { message: 'Checkout is paused while a full-store stock count is in progress.' };
     if (detail.includes('open shift')) return { message: 'Your shift is no longer open. Refresh the page before starting another sale.' };
     if (detail.includes('payment')) return { message: 'Payment did not match the final total. Check the amount and try again.' };
     return { message: 'The sale could not be completed. Your cart is still here; please try again.' };
@@ -248,4 +261,31 @@ export async function completeSaleAction(
       })),
     } : undefined,
   };
+}
+
+export async function saveHeldSaleAction(_state: HoldActionState, formData: FormData): Promise<HoldActionState> {
+  const cashier = await getActiveCashier();
+  if (!cashier) return { ok: false, message: 'Sign in with an active cashier account to save a cart.' };
+  const shiftId = z.string().uuid().safeParse(formData.get('shiftId'));
+  const label = z.string().trim().max(80).safeParse(formData.get('label') ?? '');
+  const heldSaleIdValue = formData.get('heldSaleId');
+  const heldSaleId = heldSaleIdValue ? z.string().uuid().safeParse(heldSaleIdValue) : null;
+  let items: unknown;
+  try { items = JSON.parse(String(formData.get('items') ?? '')); } catch { return { ok: false, message: 'The cart could not be read.' }; }
+  const parsedItems = itemInput.safeParse(items);
+  if (!shiftId.success || !label.success || !parsedItems.success || (heldSaleIdValue && !heldSaleId?.success)) return { ok: false, message: 'Check the cart label and items before saving.' };
+  const { data, error } = heldSaleId?.success
+    ? await cashier.supabase.rpc('update_held_sale', { p_held_sale_id: heldSaleId.data, p_label: label.data || null, p_items: parsedItems.data as unknown as Json })
+    : await cashier.supabase.rpc('save_held_sale', { p_shift_id: shiftId.data, p_label: label.data || null, p_items: parsedItems.data as unknown as Json });
+  if (error || !data) return { ok: false, message: error?.message.includes('count') ? 'A cart cannot be saved during a full-store stock count.' : 'The cart could not be saved. Refresh and try again.' };
+  revalidatePath('/pos');
+  return { ok: true, message: 'Cart saved for this shift.', holdId: data, version: crypto.randomUUID() };
+}
+
+export async function deleteHeldSaleAction(formData: FormData): Promise<void> {
+  const cashier = await getActiveCashier();
+  const heldSaleId = z.string().uuid().safeParse(formData.get('heldSaleId'));
+  if (!cashier || !heldSaleId.success) return;
+  const { error } = await cashier.supabase.from('held_sales').delete().eq('id', heldSaleId.data).eq('cashier_id', cashier.userId);
+  if (!error) revalidatePath('/pos');
 }

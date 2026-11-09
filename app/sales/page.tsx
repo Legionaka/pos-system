@@ -6,6 +6,9 @@ import { createClient } from '@/lib/supabase/server';
 import { getStoreSettings } from '@/lib/store-settings';
 import { WorkspaceShell } from '@/app/workspace/workspace-shell';
 import { SalesHistory, type SaleHistoryEntry } from './sales-history';
+import type { Database } from '@/lib/supabase/database';
+
+type PaymentMethod = Database['public']['Enums']['payment_method'];
 
 export const metadata = { title: 'Sales history | TrueMarket' };
 
@@ -73,14 +76,17 @@ async function SalesContent() {
 
   const canReadRefundDetails = profile.role === 'manager' || profile.role === 'owner';
   const { data: refundRows, error: refundsError } = canReadRefundDetails && saleIds.length
-    ? await supabase.from('refunds').select('id, sale_id, rounding_cents').in('sale_id', saleIds)
+    ? await supabase.from('refunds').select('id, number, sale_id, reason, total_cents, rounding_cents, created_at').in('sale_id', saleIds)
     : { data: [], error: null };
   const refundIds = (refundRows ?? []).map((refund) => refund.id);
-  const { data: refundItemRows, error: refundItemsError } = canReadRefundDetails && refundIds.length
-    ? await supabase.from('refund_items').select('sale_item_id, qty, amount_cents').in('refund_id', refundIds)
-    : { data: [], error: null };
+  const [{ data: refundItemRows, error: refundItemsError }, { data: refundPaymentRows, error: refundPaymentsError }] = canReadRefundDetails && refundIds.length
+    ? await Promise.all([
+      supabase.from('refund_items').select('sale_item_id, qty, amount_cents').in('refund_id', refundIds),
+      supabase.from('refund_payments').select('refund_id, method, amount_cents, reference').in('refund_id', refundIds),
+    ])
+    : [{ data: [], error: null }, { data: [], error: null }];
 
-  const dataError = Boolean(salesError || itemsResult.error || paymentsResult.error || profilesResult.error || refundsError || refundItemsError);
+  const dataError = Boolean(salesError || itemsResult.error || paymentsResult.error || profilesResult.error || refundsError || refundItemsError || refundPaymentsError);
   const cashierNames = new Map((profilesResult.data ?? []).map((person) => [person.id, person.name]));
   const refundedBySaleItem = new Map<string, { qty: number; amountCents: number }>();
   for (const refundItem of refundItemRows ?? []) {
@@ -92,6 +98,18 @@ async function SalesContent() {
   const refundedRoundingBySale = new Map<string, number>();
   for (const refund of refundRows ?? []) {
     refundedRoundingBySale.set(refund.sale_id, (refundedRoundingBySale.get(refund.sale_id) ?? 0) + refund.rounding_cents);
+  }
+  const refundPaymentsByRefund = new Map<string, Array<{ method: PaymentMethod; amountCents: number; reference: string | null }>>();
+  for (const payment of refundPaymentRows ?? []) {
+    const list = refundPaymentsByRefund.get(payment.refund_id) ?? [];
+    list.push({ method: payment.method, amountCents: payment.amount_cents, reference: payment.reference });
+    refundPaymentsByRefund.set(payment.refund_id, list);
+  }
+  const refundsBySale = new Map<string, SaleHistoryEntry['refunds']>();
+  for (const refund of refundRows ?? []) {
+    const list = refundsBySale.get(refund.sale_id) ?? [];
+    list.push({ number: refund.number, reason: refund.reason, totalCents: refund.total_cents, createdAt: refund.created_at, payments: refundPaymentsByRefund.get(refund.id) ?? [] });
+    refundsBySale.set(refund.sale_id, list);
   }
   const itemsBySale = new Map<string, SaleHistoryEntry['items']>();
   for (const item of itemsResult.data ?? []) {
@@ -142,6 +160,7 @@ async function SalesContent() {
     createdAt: sale.created_at,
     items: itemsBySale.get(sale.id) ?? [],
     payments: paymentsBySale.get(sale.id) ?? [],
+    refunds: refundsBySale.get(sale.id) ?? [],
   }));
 
   const store = await getStoreSettings();
@@ -153,7 +172,7 @@ async function SalesContent() {
       homeHref={profile.role === 'cashier' ? '/pos' : profile.role === 'owner' ? '/owner' : '/catalog'}
       loadError={dataError ? 'Some transaction details could not be loaded. Refresh this page and try again.' : null}
       store={store}
-      refundDataAvailable={canReadRefundDetails && !refundsError && !refundItemsError}
+      refundDataAvailable={canReadRefundDetails && !refundsError && !refundItemsError && !refundPaymentsError}
       referenceTime={getRequestTime()}
     />
   );

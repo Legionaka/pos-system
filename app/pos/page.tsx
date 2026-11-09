@@ -48,7 +48,7 @@ async function PosContent() {
   const [productsResult, categoriesResult, shiftResult] = await Promise.all([
     supabase
       .from('products')
-      .select('id, sku, barcode, name, price_cents, tax_category, stock_qty, category_id, active')
+      .select('id, sku, barcode, name, price_cents, tax_category, stock_qty, category_id, active, image_path')
       .eq('active', true)
       .order('name'),
     supabase.from('categories').select('id, name').order('name'),
@@ -59,12 +59,20 @@ async function PosContent() {
       .is('closed_at', null)
       .maybeSingle(),
   ]);
+  const { data: heldRows, error: heldError } = shiftResult.data
+    ? await supabase.from('held_sales').select('id, label, created_at').eq('shift_id', shiftResult.data.id).order('created_at', { ascending: false }).limit(30)
+    : { data: [], error: null };
+  const heldIds = (heldRows ?? []).map((row) => row.id);
+  const { data: heldItemRows, error: heldItemsError } = heldIds.length
+    ? await supabase.from('held_sale_items').select('held_sale_id, product_id, qty').in('held_sale_id', heldIds)
+    : { data: [], error: null };
+  const { data: checkoutPaused, error: countStateError } = await supabase.rpc('inventory_checkout_paused');
   const store = await getStoreSettings();
 
-  const products: PosProduct[] = productsResult.data ?? [];
+  const products: PosProduct[] = (productsResult.data ?? []).map((product) => ({ ...product, image_url: product.image_path && process.env.NEXT_PUBLIC_SUPABASE_URL ? `${process.env.NEXT_PUBLIC_SUPABASE_URL.replace(/\/$/, '')}/storage/v1/object/public/product-images/${product.image_path}` : null }));
   const categories: PosCategory[] = categoriesResult.data ?? [];
   const shift: PosShift | null = shiftResult.data;
-  const loadError = productsResult.error || categoriesResult.error || shiftResult.error
+  const loadError = productsResult.error || categoriesResult.error || shiftResult.error || heldError || heldItemsError || countStateError
     ? 'Some store data could not be loaded. Refresh this page or contact the store owner.'
     : null;
 
@@ -77,6 +85,8 @@ async function PosContent() {
       loadError={loadError}
       storeName={store.storeName}
       storeLogoUrl={store.logoUrl}
+      heldSales={(heldRows ?? []).map((row) => ({ ...row, items: (heldItemRows ?? []).filter((item) => item.held_sale_id === row.id).map(({ product_id, qty }) => ({ productId: product_id, qty })) }))}
+      checkoutPaused={Boolean(checkoutPaused)}
     />
   );
 }
