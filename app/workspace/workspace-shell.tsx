@@ -9,7 +9,7 @@ import type { StoreSettings } from '@/lib/store-settings';
 
 const ownerLinks = [
   ['/owner', 'Overview'], ['/owner/team', 'Team'], ['/owner/shifts', 'Shifts'],
-  ['/owner/store', 'Store profile'], ['/owner/activity', 'Activity'],
+  ['/owner/store', 'Store profile'], ['/owner/pos-settings', 'Promotions and targets'], ['/owner/activity', 'Activity'],
   ['/catalog', 'Products'], ['/inventory', 'Inventory'], ['/reports', 'Reports'], ['/sales', 'Sales history'],
 ] as const;
 const devLinks = [['/dev', 'Support overview'], ['/dev/features', 'Feature flags'], ['/dev/activity', 'Technical activity']] as const;

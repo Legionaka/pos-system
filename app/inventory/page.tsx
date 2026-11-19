@@ -37,6 +37,11 @@ async function InventoryContent() {
     supabase.from('inventory_deliveries').select('id, supplier_name, delivery_date, reference, notes, created_at').order('created_at', { ascending: false }).limit(30),
     supabase.from('inventory_counts').select('id, status, started_at').eq('status', 'in_progress').maybeSingle(),
   ]);
+  const purchaseOrdersResult = await supabase.from('purchase_orders').select('id, supplier_name, status, reference, created_at').order('created_at', { ascending: false }).limit(50);
+  const purchaseOrderIds = (purchaseOrdersResult.data ?? []).map((order) => order.id);
+  const purchaseOrderItemsResult = purchaseOrderIds.length
+    ? await loadAllPages<{ id: string; purchase_order_id: string; product_name: string; sku: string; ordered_qty: number; received_qty: number; unit_cost_cents: number }>((from, to) => supabase.from('purchase_order_items').select('id, purchase_order_id, product_name, sku, ordered_qty, received_qty, unit_cost_cents').in('purchase_order_id', purchaseOrderIds).order('product_name').range(from, to))
+    : { rows: [], error: null };
   const deliveryIds = (deliveriesResult.data ?? []).map((delivery) => delivery.id);
   const [deliveryItemsResult, countItemsResult] = await Promise.all([
     deliveryIds.length ? loadAllPages<DeliveryItem>((from, to) => supabase.from('inventory_delivery_items').select('id, delivery_id, product_name, sku, qty, unit_cost_cents').in('delivery_id', deliveryIds).order('created_at').range(from, to)) : Promise.resolve({ rows: [] as DeliveryItem[], error: null }),
@@ -45,13 +50,15 @@ async function InventoryContent() {
   const store = await getStoreSettings();
   const page = <div className="workspace-page">
     <WorkspaceHeader eyebrow="STORE MANAGEMENT / STOCK CONTROL" title="Inventory" description="Record supplier deliveries, review stock history, and run a full-store count." />
-    {(productsResult.error || deliveriesResult.error || deliveryItemsResult.error || countResult.error || countItemsResult.error) && <p className="workspace-alert" role="alert">Some inventory data could not be loaded. Refresh and try again.</p>}
+    {(productsResult.error || deliveriesResult.error || deliveryItemsResult.error || countResult.error || countItemsResult.error || purchaseOrdersResult.error || purchaseOrderItemsResult.error) && <p className="workspace-alert" role="alert">Some inventory data could not be loaded. Refresh and try again.</p>}
     <InventoryWorkspace
       products={productsResult.rows as InventoryProduct[]}
       deliveries={deliveriesResult.data ?? []}
       deliveryItems={deliveryItemsResult.rows}
       activeCount={countResult.data ?? null}
       countItems={countItemsResult.rows}
+      purchaseOrders={purchaseOrdersResult.data ?? []}
+      purchaseOrderItems={purchaseOrderItemsResult.rows}
     />
   </div>;
   return profile.role === 'owner'

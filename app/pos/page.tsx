@@ -4,6 +4,7 @@ import { connection } from 'next/server';
 import { signOutAction } from '@/app/auth/actions';
 import { createClient } from '@/lib/supabase/server';
 import { getStoreSettings } from '@/lib/store-settings';
+import { getJohannesburgDate } from '@/lib/request-time';
 import { PosScreen, type PosProduct, type PosCategory, type PosShift } from './pos-screen';
 
 export const metadata = { title: 'Point of sale | TrueMarket' };
@@ -45,10 +46,11 @@ async function PosContent() {
     );
   }
 
-  const [productsResult, categoriesResult, shiftResult] = await Promise.all([
+  const today = getJohannesburgDate();
+  const [productsResult, categoriesResult, shiftResult, promotionsResult, discountSettingsResult] = await Promise.all([
     supabase
       .from('products')
-      .select('id, sku, barcode, name, price_cents, tax_category, stock_qty, category_id, active, image_path')
+      .select('id, sku, barcode, name, price_cents, tax_category, stock_qty, category_id, variant_group_id, active, image_path')
       .eq('active', true)
       .order('name'),
     supabase.from('categories').select('id, name').order('name'),
@@ -58,6 +60,8 @@ async function PosContent() {
       .eq('user_id', userId)
       .is('closed_at', null)
       .maybeSingle(),
+    supabase.from('promotions').select('id, name, product_id, discount_type, discount_value, starts_on, ends_on').eq('active', true).lte('starts_on', today).gte('ends_on', today),
+    supabase.from('store_feature_settings').select('cashier_discount_limit_bps').eq('singleton', true).maybeSingle(),
   ]);
   const { data: heldRows, error: heldError } = shiftResult.data
     ? await supabase.from('held_sales').select('id, label, created_at').eq('shift_id', shiftResult.data.id).order('created_at', { ascending: false }).limit(30)
@@ -72,7 +76,7 @@ async function PosContent() {
   const products: PosProduct[] = (productsResult.data ?? []).map((product) => ({ ...product, image_url: product.image_path && process.env.NEXT_PUBLIC_SUPABASE_URL ? `${process.env.NEXT_PUBLIC_SUPABASE_URL.replace(/\/$/, '')}/storage/v1/object/public/product-images/${product.image_path}` : null }));
   const categories: PosCategory[] = categoriesResult.data ?? [];
   const shift: PosShift | null = shiftResult.data;
-  const loadError = productsResult.error || categoriesResult.error || shiftResult.error || heldError || heldItemsError || countStateError
+  const loadError = productsResult.error || categoriesResult.error || shiftResult.error || heldError || heldItemsError || countStateError || promotionsResult.error || discountSettingsResult.error
     ? 'Some store data could not be loaded. Refresh this page or contact the store owner.'
     : null;
 
@@ -87,6 +91,8 @@ async function PosContent() {
       storeLogoUrl={store.logoUrl}
       heldSales={(heldRows ?? []).map((row) => ({ ...row, items: (heldItemRows ?? []).filter((item) => item.held_sale_id === row.id).map(({ product_id, qty }) => ({ productId: product_id, qty })) }))}
       checkoutPaused={Boolean(checkoutPaused)}
+      promotions={(promotionsResult.data ?? []).map((promotion) => ({ ...promotion, product_id: promotion.product_id }))}
+      cashierDiscountLimitBps={discountSettingsResult.data?.cashier_discount_limit_bps ?? 1000}
     />
   );
 }

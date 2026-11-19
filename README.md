@@ -1,36 +1,75 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# TrueMarket POS
 
-## Getting Started
+TrueMarket POS is a single-store point-of-sale and store operations app built with Next.js and Supabase. It supports cashier checkout and gives managers and owners tools to manage products, stock, staff, shifts, and sales.
 
-First, run the development server:
+## Features
+
+- Role-based workspaces for cashiers, managers, owners, and developers.
+- POS checkout with barcode or text search, discounts, cash/card/EFT/QR payments, VAT and cash rounding, shift management, and held carts.
+- Local offline sale queue with later synchronization.
+- Product catalog with categories, variants, images, CSV import/export, stock adjustments, and reorder levels.
+- Inventory delivery receiving, purchase orders, and reviewed stock counts.
+- Sales history, receipts, partial or full refunds, and date-range reports with CSV export.
+- Owner tools for team invitations, staff access, store branding, POS settings, promotions, sales targets, shifts, and activity history.
+- Developer workspace for activity history and registered feature flags.
+
+## Tech stack
+
+- Next.js 16 App Router, React 19, and TypeScript
+- Supabase Auth, PostgreSQL, Row Level Security, and Storage
+- Tailwind CSS 4
+- Zod for input validation
+
+## Run locally
+
+### Requirements
+
+- Node.js 20.9 or later
+- A Supabase project
+
+### Install and configure
+
+```bash
+npm ci
+```
+
+Copy `.env.example` to `.env.local` and set the values for your Supabase project:
+
+```dotenv
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-server-only-service-role-key
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+```
+
+Keep `SUPABASE_SERVICE_ROLE_KEY` private and out of client-side code. Apply the SQL migrations in `supabase/migrations` to the project in filename order using the Supabase CLI or dashboard SQL editor. The app depends on those migrations for its schema, policies, functions, and storage buckets.
+
+Create the initial owner account through a trusted Supabase Auth/admin workflow and assign its `profiles.role` as `owner`. Owners can then invite cashier and manager accounts from the app. Do not expose service-role credentials to users.
+
+### Start the development server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Visit [http://localhost:3000](http://localhost:3000); the root route redirects to `/login`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Other commands
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run lint
+npm run build
+npm run start
+```
 
-## Learn More
+## Project structure
 
-To learn more about Next.js, take a look at the following resources:
+- `app/` — App Router pages, server actions, and UI for authentication, POS, catalog, inventory, sales, reports, and role workspaces.
+- `lib/` — Supabase clients, database types, and shared settings/time helpers.
+- `supabase/migrations/` — PostgreSQL schema changes, business functions, and access policies.
+- `supabase/seed_supermarket_demo.sql` — Optional demo data script; review and run it only in a non-production database.
+- `docs/OPERATIONS.md` — Operational guidance, backup/recovery notes, and a launch acceptance checklist.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Operational notes
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The app records refunds and payment references but does not process card transactions or move money. Offline checkout depends on a later successful sync. The operations guide includes a launch checklist for the store's browser, barcode scanner, receipt printer, and role restrictions; those checks should be completed in the target environment before relying on the app in a live store.

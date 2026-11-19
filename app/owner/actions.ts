@@ -122,3 +122,54 @@ export async function saveStoreSettingsAction(_state: OwnerActionState, formData
     return { ok: false, message: error instanceof Error ? error.message : 'Could not save store settings.' };
   }
 }
+
+const ownerMoney = (value: unknown) => {
+  const parsed = z.string().trim().regex(/^\d{1,9}(?:\.\d{1,2})?$/).safeParse(value);
+  if (!parsed.success) return null;
+  const [whole, fraction = ''] = parsed.data.split('.');
+  return Number(whole) * 100 + Number(fraction.padEnd(2, '0'));
+};
+
+export async function saveCashierDiscountLimitAction(_state: OwnerActionState, formData: FormData): Promise<OwnerActionState> {
+  try {
+    const supabase = await requireOwner();
+    const limit = z.coerce.number().int().min(0).max(100).safeParse(formData.get('limitPercent'));
+    if (!limit.success) return { ok: false, message: 'Enter a discount limit from 0 to 100 percent.' };
+    const { error } = await supabase.rpc('set_cashier_discount_limit', { p_limit_bps: limit.data * 100 });
+    if (error) return { ok: false, message: 'Discount limit could not be saved.' };
+    revalidatePath('/owner/pos-settings');
+    return { ok: true, message: 'Cashier discount limit saved.', version: randomUUID() };
+  } catch (error) { return { ok: false, message: error instanceof Error ? error.message : 'Could not save the discount limit.' }; }
+}
+
+export async function savePromotionAction(_state: OwnerActionState, formData: FormData): Promise<OwnerActionState> {
+  try {
+    const supabase = await requireOwner();
+    const parsed = z.object({ name: z.string().trim().min(2).max(100), productId: z.union([z.literal(''), z.string().uuid()]), type: z.enum(['percent', 'fixed']), value: z.string().trim().regex(/^\d{1,7}(?:\.\d{1,2})?$/), startsOn: z.string().date(), endsOn: z.string().date(), active: z.enum(['true', 'false']) }).safeParse({
+      name: formData.get('name'), productId: formData.get('productId'), type: formData.get('type'), value: formData.get('value'), startsOn: formData.get('startsOn'), endsOn: formData.get('endsOn'), active: formData.get('active'),
+    });
+    if (!parsed.success) return { ok: false, message: 'Check the promotion fields and date range.' };
+    const rawValue = Number(parsed.data.value);
+    const value = parsed.data.type === 'percent' ? Math.round(rawValue * 100) : Math.round(rawValue * 100);
+    const { error } = await supabase.rpc('save_promotion', { p_id: null, p_name: parsed.data.name, p_product_id: parsed.data.productId || null, p_type: parsed.data.type, p_value: value, p_starts_on: parsed.data.startsOn, p_ends_on: parsed.data.endsOn, p_active: parsed.data.active === 'true' });
+    if (error) return { ok: false, message: 'Promotion could not be saved. Confirm the percentage is at most 100.' };
+    revalidatePath('/owner/pos-settings');
+    revalidatePath('/pos');
+    return { ok: true, message: 'Promotion saved.', version: randomUUID() };
+  } catch (error) { return { ok: false, message: error instanceof Error ? error.message : 'Could not save the promotion.' }; }
+}
+
+export async function saveSalesTargetAction(_state: OwnerActionState, formData: FormData): Promise<OwnerActionState> {
+  try {
+    const supabase = await requireOwner();
+    const date = z.string().date().safeParse(formData.get('date'));
+    const user = z.union([z.literal(''), z.string().uuid()]).safeParse(formData.get('userId'));
+    const cents = ownerMoney(formData.get('amount'));
+    if (!date.success || !user.success || cents === null || cents <= 0) return { ok: false, message: 'Enter a date and positive target amount.' };
+    const { error } = await supabase.rpc('save_sales_target', { p_date: date.data, p_user_id: user.data || null, p_target_cents: cents });
+    if (error) return { ok: false, message: 'Sales target could not be saved.' };
+    revalidatePath('/owner/pos-settings');
+    revalidatePath('/reports');
+    return { ok: true, message: 'Daily target saved.', version: randomUUID() };
+  } catch (error) { return { ok: false, message: error instanceof Error ? error.message : 'Could not save the target.' }; }
+}

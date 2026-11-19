@@ -93,3 +93,50 @@ export async function cancelInventoryCountAction(formData: FormData): Promise<vo
   const { error } = await supabase.rpc('cancel_inventory_count', { p_count_id: countId.data });
   if (!error) refreshInventory();
 }
+
+export async function createPurchaseOrderAction(_state: InventoryActionState, formData: FormData): Promise<InventoryActionState> {
+  const supabase = await requireManager();
+  if (!supabase) return { ok: false, message: 'An active manager or owner account is required.' };
+  const supplier = z.string().trim().min(2).max(120).safeParse(formData.get('supplier'));
+  if (!supplier.success) return { ok: false, message: 'Enter a supplier name.' };
+  const items: Array<{ product_id: string; qty: number; unit_cost_cents: number }> = [];
+  for (const [key, rawQty] of formData.entries()) {
+    const match = /^po_qty_([0-9a-f-]{36})$/i.exec(key);
+    if (!match || typeof rawQty !== 'string' || !rawQty.trim()) continue;
+    const qty = z.coerce.number().int().positive().max(2_147_483_647).safeParse(rawQty);
+    const costText = formData.get(`po_cost_${match[1]}`);
+    const cost = z.string().trim().regex(/^\d{1,9}(?:\.\d{1,2})?$/).safeParse(costText);
+    if (!qty.success || !cost.success) return { ok: false, message: 'Enter a positive quantity and valid unit cost for each ordered product.' };
+    const [whole, fraction = ''] = cost.data.split('.');
+    items.push({ product_id: match[1], qty: qty.data, unit_cost_cents: Number(whole) * 100 + Number(fraction.padEnd(2, '0')) });
+  }
+  if (!items.length) return { ok: false, message: 'Add at least one product to the purchase order.' };
+  const { error } = await supabase.rpc('create_purchase_order', {
+    p_supplier: supplier.data,
+    p_reference: String(formData.get('reference') ?? '').slice(0, 120),
+    p_notes: String(formData.get('notes') ?? '').slice(0, 500),
+    p_items: items as unknown as Json,
+  });
+  if (error) return { ok: false, message: 'Purchase order could not be saved. Check quantities and try again.' };
+  refreshInventory();
+  return { ok: true, message: 'Purchase order saved as a draft.', version: crypto.randomUUID() };
+}
+
+export async function updatePurchaseOrderAction(formData: FormData): Promise<void> {
+  const supabase = await requireManager();
+  const id = z.string().uuid().safeParse(formData.get('orderId'));
+  const status = z.enum(['ordered', 'cancelled']).safeParse(formData.get('status'));
+  if (!supabase || !id.success || !status.success) return;
+  const { error } = await supabase.rpc('set_purchase_order_status', { p_id: id.data, p_status: status.data });
+  if (!error) refreshInventory();
+}
+
+export async function receivePurchaseOrderItemAction(formData: FormData): Promise<void> {
+  const supabase = await requireManager();
+  const orderId = z.string().uuid().safeParse(formData.get('orderId'));
+  const itemId = z.string().uuid().safeParse(formData.get('itemId'));
+  const qty = z.coerce.number().int().positive().max(2_147_483_647).safeParse(formData.get('qty'));
+  if (!supabase || !orderId.success || !itemId.success || !qty.success) return;
+  const { error } = await supabase.rpc('receive_purchase_order_item', { p_id: orderId.data, p_item_id: itemId.data, p_qty: qty.data });
+  if (!error) refreshInventory();
+}

@@ -44,12 +44,12 @@ export type Database = {
         {
           id: string; sku: string; barcode: string | null; name: string; price_cents: number;
           tax_category: Database['public']['Enums']['tax_category']; stock_qty: number; reorder_at: number;
-          active: boolean; category_id: string | null; image_path: string | null; created_at: string; updated_at: string;
+          active: boolean; category_id: string | null; image_path: string | null; variant_group_id: string | null; created_at: string; updated_at: string;
         },
         {
           id?: string; sku: string; barcode?: string | null; name: string; price_cents: number;
           tax_category: Database['public']['Enums']['tax_category']; stock_qty?: number; reorder_at?: number;
-          active?: boolean; category_id?: string | null; image_path?: string | null; created_at?: string; updated_at?: string;
+          active?: boolean; category_id?: string | null; image_path?: string | null; variant_group_id?: string | null; created_at?: string; updated_at?: string;
         },
         [Relationship<'products_category_id_fkey', ['category_id'], 'categories', ['id']>]
       >;
@@ -90,13 +90,13 @@ export type Database = {
         {
           id: string; number: number; cashier_id: string; shift_id: string; status: Database['public']['Enums']['sale_status'];
           subtotal_cents: number; vat_cents: number; discount_cents: number; rounding_cents: number; total_cents: number;
-          cash_received_cents: number; change_cents: number; created_at: string;
+          cash_received_cents: number; change_cents: number; offline_key: string | null; created_at: string;
         },
         {
           id?: string; number?: never; cashier_id: string; shift_id: string;
           status?: Database['public']['Enums']['sale_status']; subtotal_cents: number; vat_cents: number;
           discount_cents?: number; rounding_cents?: number; total_cents: number;
-          cash_received_cents?: number; change_cents?: number; created_at?: string;
+          cash_received_cents?: number; change_cents?: number; offline_key?: string | null; created_at?: string;
         },
         [
           Relationship<'sales_cashier_id_fkey', ['cashier_id'], 'profiles', ['id']>,
@@ -172,11 +172,11 @@ export type Database = {
       stock_movements: RelTable<
         {
           id: string; product_id: string; delta: number; reason: string; actor_id: string | null;
-          sale_id: string | null; refund_id: string | null; delivery_id: string | null; count_id: string | null; created_at: string;
+          sale_id: string | null; refund_id: string | null; delivery_id: string | null; count_id: string | null; purchase_order_item_id: string | null; created_at: string;
         },
         {
           id?: string; product_id: string; delta: number; reason: string; actor_id?: string | null;
-          sale_id?: string | null; refund_id?: string | null; delivery_id?: string | null; count_id?: string | null; created_at?: string;
+          sale_id?: string | null; refund_id?: string | null; delivery_id?: string | null; count_id?: string | null; purchase_order_item_id?: string | null; created_at?: string;
         },
         [
           Relationship<'stock_movements_product_id_fkey', ['product_id'], 'products', ['id']>,
@@ -207,6 +207,20 @@ export type Database = {
         { id?: string; count_id: string; product_id: string; product_name: string; sku: string; expected_qty: number; counted_qty?: number | null; counted_by?: string | null; counted_at?: string | null },
         [Relationship<'inventory_count_items_count_id_fkey', ['count_id'], 'inventory_counts', ['id']>, Relationship<'inventory_count_items_product_id_fkey', ['product_id'], 'products', ['id']>, Relationship<'inventory_count_items_counted_by_fkey', ['counted_by'], 'profiles', ['id']>]
       >;
+      purchase_orders: RelTable<
+        { id: string; supplier_name: string; status: string; reference: string | null; notes: string | null; created_by: string; created_at: string; updated_at: string },
+        { id?: string; supplier_name: string; status?: string; reference?: string | null; notes?: string | null; created_by: string; created_at?: string; updated_at?: string },
+        [Relationship<'purchase_orders_created_by_fkey', ['created_by'], 'profiles', ['id']>]
+      >;
+      purchase_order_items: RelTable<
+        { id: string; purchase_order_id: string; product_id: string; product_name: string; sku: string; ordered_qty: number; received_qty: number; unit_cost_cents: number },
+        { id?: string; purchase_order_id: string; product_id: string; product_name: string; sku: string; ordered_qty: number; received_qty?: number; unit_cost_cents?: number },
+        [Relationship<'purchase_order_items_purchase_order_id_fkey', ['purchase_order_id'], 'purchase_orders', ['id']>, Relationship<'purchase_order_items_product_id_fkey', ['product_id'], 'products', ['id']>]
+      >;
+      store_feature_settings: Table<{ singleton: boolean; cashier_discount_limit_bps: number; updated_by: string | null; updated_at: string }, { singleton?: boolean; cashier_discount_limit_bps?: number; updated_by?: string | null; updated_at?: string }>;
+      promotions: RelTable<{ id: string; name: string; product_id: string | null; discount_type: 'percent' | 'fixed'; discount_value: number; starts_on: string; ends_on: string; active: boolean; created_by: string; created_at: string }, { id?: string; name: string; product_id?: string | null; discount_type: 'percent' | 'fixed'; discount_value: number; starts_on: string; ends_on: string; active?: boolean; created_by: string; created_at?: string }, [Relationship<'promotions_product_id_fkey', ['product_id'], 'products', ['id']>] >;
+      cash_movements: RelTable<{ id: string; shift_id: string; movement_type: 'paid_in' | 'payout'; amount_cents: number; reason: string; actor_id: string; created_at: string }, { id?: string; shift_id: string; movement_type: 'paid_in' | 'payout'; amount_cents: number; reason: string; actor_id: string; created_at?: string }, [Relationship<'cash_movements_shift_id_fkey', ['shift_id'], 'shifts', ['id']>, Relationship<'cash_movements_actor_id_fkey', ['actor_id'], 'profiles', ['id']>] >;
+      sales_targets: RelTable<{ id: string; target_date: string; user_id: string | null; target_cents: number; created_by: string; updated_at: string }, { id?: string; target_date: string; user_id?: string | null; target_cents: number; created_by: string; updated_at?: string }, [Relationship<'sales_targets_user_id_fkey', ['user_id'], 'profiles', ['id']>] >;
       audit_logs: RelTable<
         {
           id: string; user_id: string | null; action: string; entity_type: string | null;
@@ -268,6 +282,16 @@ export type Database = {
       complete_held_sale: { Args: { p_held_sale_id: string; p_items: Json; p_payments: Json }; Returns: string };
       inventory_checkout_paused: { Args: Record<PropertyKey, never>; Returns: boolean };
       sales_report: { Args: { p_from: string; p_to: string }; Returns: Json };
+      set_cashier_discount_limit: { Args: { p_limit_bps: number }; Returns: undefined };
+      approve_sale_discount: { Args: { p_cashier_id: string; p_discount_bps: number }; Returns: undefined };
+      save_promotion: { Args: { p_active: boolean; p_ends_on: string; p_id: string | null; p_name: string; p_product_id: string | null; p_starts_on: string; p_type: string; p_value: number }; Returns: string };
+      save_sales_target: { Args: { p_date: string; p_target_cents: number; p_user_id: string | null }; Returns: undefined };
+      create_purchase_order: { Args: { p_items: Json; p_notes: string | null; p_reference: string | null; p_supplier: string }; Returns: string };
+      set_purchase_order_status: { Args: { p_id: string; p_status: string }; Returns: undefined };
+      receive_purchase_order_item: { Args: { p_id: string; p_item_id: string; p_qty: number }; Returns: undefined };
+      record_cash_movement: { Args: { p_amount: number; p_reason: string; p_shift_id: string; p_type: string }; Returns: string };
+      save_variant_group: { Args: { p_product_ids: string[] }; Returns: string };
+      offline_complete_sale: { Args: { p_cash_received: number; p_items: Json; p_key: string; p_shift_id: string }; Returns: string };
     };
     Enums: {
       app_role: 'cashier' | 'manager' | 'owner' | 'dev';

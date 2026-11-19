@@ -3,7 +3,9 @@
 import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { signOutAction } from '@/app/auth/actions';
-import { closeShiftAction, completeSaleAction, deleteHeldSaleAction, openShiftAction, saveHeldSaleAction } from './actions';
+import { closeShiftAction, completeSaleAction, deleteHeldSaleAction, openShiftAction, recordCashMovementAction, saveHeldSaleAction } from './actions';
+import { syncOfflineSaleAction } from './actions';
+import { getQueuedSales, putQueuedSale, saveCatalogSnapshot, type OfflineQueueItem } from './offline-queue';
 
 export type PosProduct = {
   id: string;
@@ -14,6 +16,7 @@ export type PosProduct = {
   tax_category: 'standard' | 'zero_rated' | 'exempt';
   stock_qty: number;
   category_id: string | null;
+  variant_group_id?: string | null;
   active: boolean;
   image_url: string | null;
 };
@@ -21,7 +24,8 @@ export type PosProduct = {
 export type PosCategory = { id: string; name: string };
 export type PosShift = { id: string; opened_at: string; opening_cash_cents: number };
 export type PosHeldSale = { id: string; label: string | null; created_at: string; items: CartLine[] };
-type CartLine = { productId: string; qty: number };
+type CartLine = { productId: string; qty: number; discountBps?: number };
+type PosPromotion = { id: string; name: string; product_id: string | null; discount_type: 'percent' | 'fixed'; discount_value: number; starts_on: string; ends_on: string };
 type PaymentMethod = 'cash' | 'card' | 'eft' | 'qr';
 
 const money = (cents: number) => `R${(cents / 100).toFixed(2)}`;
@@ -42,6 +46,8 @@ export function PosScreen({
   storeLogoUrl,
   heldSales,
   checkoutPaused,
+  promotions,
+  cashierDiscountLimitBps,
 }: {
   cashierName: string;
   products: PosProduct[];
@@ -52,6 +58,8 @@ export function PosScreen({
   storeLogoUrl: string | null;
   heldSales: PosHeldSale[];
   checkoutPaused: boolean;
+  promotions: PosPromotion[];
+  cashierDiscountLimitBps: number;
 }) {
   const [search, setSearch] = useState('');
   const [categoryId, setCategoryId] = useState('all');
@@ -60,14 +68,21 @@ export function PosScreen({
   const [method, setMethod] = useState<PaymentMethod>('cash');
   const [cashReceived, setCashReceived] = useState('');
   const [reference, setReference] = useState('');
+  const [managerEmail, setManagerEmail] = useState('');
+  const [managerPassword, setManagerPassword] = useState('');
+  const [basketDiscountBps, setBasketDiscountBps] = useState(0);
   const [saleState, completeAction, salePending] = useActionState(completeSaleAction, null);
   const [shiftState, openAction, shiftPending] = useActionState(openShiftAction, null);
   const [closeShiftState, closeAction, closePending] = useActionState(closeShiftAction, null);
+  const [cashMovementState, cashMovementAction, cashMovementPending] = useActionState(recordCashMovementAction, null);
   const [showCloseShift, setShowCloseShift] = useState(false);
   const [activeHeldSaleId, setActiveHeldSaleId] = useState<string | null>(null);
   const [dismissedHoldVersion, setDismissedHoldVersion] = useState<string | null>(null);
   const [holdLabel, setHoldLabel] = useState('');
   const [holdRestoreError, setHoldRestoreError] = useState<string | null>(null);
+  const [isOnline, setIsOnline] = useState(true);
+  const [offlineQueue, setOfflineQueue] = useState<OfflineQueueItem[]>([]);
+  const [offlineMessage, setOfflineMessage] = useState<string | null>(null);
   const [holdState, saveHoldAction, holdPending] = useActionState(saveHeldSaleAction, null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -88,6 +103,60 @@ export function PosScreen({
     return () => window.removeEventListener('keydown', focusSearch);
   }, []);
 
+  useEffect(() => {
+    if ('serviceWorker' in navigator) void navigator.serviceWorker.register('/register-service-worker.js').then(async () => {
+      const registration = await navigator.serviceWorker.ready;
+      registration.active?.postMessage('CACHE_POS');
+    }).catch(() => undefined);
+    setIsOnline(navigator.onLine);
+    const update = () => setIsOnline(navigator.onLine);
+    window.addEventListener('online', update);
+    window.addEventListener('offline', update);
+    return () => { window.removeEventListener('online', update); window.removeEventListener('offline', update); };
+  }, []);
+
+  useEffect(() => {
+    if (!('indexedDB' in window)) return;
+    void saveCatalogSnapshot(products.map(({ id, sku, barcode, name, price_cents, stock_qty }) => ({ id, sku, barcode, name, price_cents, stock_qty }))).catch(() => setOfflineMessage('Offline storage is unavailable in this browser.'));
+  }, [products]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function refreshAndSync() {
+      if (!('indexedDB' in window)) return;
+      let queue = await getQueuedSales().catch(() => []);
+      if (isOnline && navigator.onLine && shift) {
+        for (const sale of queue) {
+          if (sale.status !== 'queued') continue;
+          let result: Awaited<ReturnType<typeof syncOfflineSaleAction>>;
+          try { result = await syncOfflineSaleAction(sale); }
+          catch { setOfflineMessage('Connection dropped while syncing. Remaining sales will retry when the register reconnects.'); break; }
+          if (cancelled) return;
+          if (!result.ok) {
+            sale.status = 'rejected';
+            sale.message = result.message;
+            await putQueuedSale(sale);
+          } else {
+            sale.status = 'synced';
+            sale.message = result.message;
+            await putQueuedSale(sale);
+            setOfflineMessage(result.message);
+          }
+        }
+      }
+      if (!cancelled) setOfflineQueue(queue);
+    }
+    void refreshAndSync();
+    return () => { cancelled = true; };
+  }, [isOnline, shift]);
+
+  useEffect(() => {
+    if (saleState?.saleId) {
+      setManagerEmail('');
+      setManagerPassword('');
+    }
+  }, [saleState?.saleId]);
+
   const showReceipt = Boolean(saleState?.saleId && saleState.saleId !== dismissedSaleId);
   const holdWasSaved = Boolean(holdState?.ok && holdState.version && holdState.version !== dismissedHoldVersion);
   const activeCart = showReceipt || holdWasSaved ? [] : cart;
@@ -103,16 +172,25 @@ export function PosScreen({
 
   const cartProducts = activeCart.flatMap((line) => {
     const product = products.find((item) => item.id === line.productId);
-    return product ? [{ product, qty: line.qty }] : [];
+    if (!product) return [];
+    const gross = product.price_cents * line.qty;
+    const manualDiscount = Math.round(gross * Math.max(line.discountBps ?? 0, basketDiscountBps) / 10000);
+    const promotionDiscount = promotions.filter((promotion) => !promotion.product_id || promotion.product_id === product.id).reduce((best, promotion) => {
+      const amount = promotion.discount_type === 'percent' ? Math.round(gross * promotion.discount_value / 10000) : promotion.discount_value * line.qty;
+      return Math.max(best, Math.min(gross, amount));
+    }, 0);
+    return [{ product, qty: line.qty, discountCents: Math.max(manualDiscount, promotionDiscount) }];
   });
   const subtotalCents = cartProducts.reduce((sum, line) => sum + line.product.price_cents * line.qty, 0);
+  const discountCents = cartProducts.reduce((sum, line) => sum + line.discountCents, 0);
   const vatCents = cartProducts.reduce((sum, line) => sum + (
     line.product.tax_category === 'standard'
-      ? Math.round(line.product.price_cents * line.qty * 15 / 115)
+      ? Math.round((line.product.price_cents * line.qty - line.discountCents) * 15 / 115)
       : 0
   ), 0);
-  const roundingCents = method === 'cash' ? Math.round(subtotalCents / 5) * 5 - subtotalCents : 0;
-  const totalCents = subtotalCents + roundingCents;
+  const beforeRoundingCents = subtotalCents - discountCents;
+  const roundingCents = method === 'cash' ? Math.round(beforeRoundingCents / 5) * 5 - beforeRoundingCents : 0;
+  const totalCents = beforeRoundingCents + roundingCents;
   const receivedCents = toCents(cashReceived);
   const changeCents = method === 'cash' && receivedCents !== null
     ? Math.max(0, receivedCents - totalCents)
@@ -124,6 +202,7 @@ export function PosScreen({
       setDismissedSaleId(saleState.saleId);
       setActiveHeldSaleId(null);
       setCart([{ productId: product.id, qty: 1 }]);
+      setBasketDiscountBps(0);
       setCashReceived('');
       setReference('');
       return;
@@ -132,6 +211,7 @@ export function PosScreen({
       setDismissedHoldVersion(holdState?.version ?? null);
       setActiveHeldSaleId(null);
       setCart([{ productId: product.id, qty: 1 }]);
+      setBasketDiscountBps(0);
       setCashReceived('');
       setReference('');
       return;
@@ -175,6 +255,10 @@ export function PosScreen({
       : line));
   }
 
+  function setDiscount(productId: string, discountBps: number) {
+    setCart((current) => current.map((line) => line.productId === productId ? { ...line, discountBps } : line));
+  }
+
   return (
     <main className="pos-app">
       <header className="pos-topbar">
@@ -207,6 +291,9 @@ export function PosScreen({
           </div>
 
           {loadError && <p className="pos-alert" role="alert">{loadError}</p>}
+          {!isOnline && <p className="pos-alert" role="status">Offline mode: only cash sales can be queued. Queued sales will sync when this register reconnects.</p>}
+          {offlineMessage && <p className="pos-success" role="status">{offlineMessage}</p>}
+          {offlineQueue.length > 0 && <section className="pos-held-sales" aria-label="Offline sales"><strong>Offline sales <span>{offlineQueue.filter((sale) => sale.status !== 'synced').length} pending</span></strong>{offlineQueue.slice(-20).map((sale) => <div key={sale.key}><span>{new Intl.DateTimeFormat('en-ZA', { timeStyle: 'short', timeZone: 'Africa/Johannesburg' }).format(new Date(sale.createdAt))}<small>{sale.items.length} products · {sale.status === 'queued' ? 'Waiting to sync' : sale.message || (sale.status === 'synced' ? 'Synced' : 'Needs review')}</small></span></div>)}</section>}
 
           {!shift && (
             <section className="pos-open-shift" aria-labelledby="open-shift-title">
@@ -248,6 +335,15 @@ export function PosScreen({
                   </button>
                 </div>
                 {closeShiftState?.message && <p className="pos-field-error" role="alert">{closeShiftState.message}</p>}
+              </form>
+              <form action={cashMovementAction} className="pos-open-shift-form">
+                <input type="hidden" name="shiftId" value={shift.id} />
+                <label htmlFor="cash-movement-type">Till movement</label>
+                <select id="cash-movement-type" name="type" defaultValue="paid_in" disabled={cashMovementPending}><option value="paid_in">Paid in</option><option value="payout">Payout</option></select>
+                <input name="amount" type="number" min="0.01" step="0.01" placeholder="Amount (R)" required disabled={cashMovementPending} />
+                <input name="reason" minLength={3} maxLength={250} placeholder="Reason" required disabled={cashMovementPending} />
+                <button className="pos-button pos-button--secondary" type="submit" disabled={cashMovementPending}>{cashMovementPending ? 'Recording…' : 'Record movement'}</button>
+                {cashMovementState?.message && <p className="pos-field-error" role="status">{cashMovementState.message}</p>}
               </form>
             </section>
           )}
@@ -334,7 +430,7 @@ export function PosScreen({
             <div className="pos-cart-empty"><span aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M10 4v12M4 10h12" /></svg></span><p>Your sale is empty</p><small>Add products from the catalog.</small></div>
           ) : (
             <ul className="pos-cart-lines">
-              {cartProducts.map(({ product, qty }) => (
+              {cartProducts.map(({ product, qty, discountCents }) => (
                 <li key={product.id}>
                   <div className="pos-cart-line-copy"><strong>{product.name}</strong><span>{money(product.price_cents)} each</span></div>
                   <div className="pos-quantity" aria-label={`Quantity for ${product.name}`}>
@@ -342,19 +438,45 @@ export function PosScreen({
                     <span>{qty}</span>
                     <button type="button" aria-label={`Add one ${product.name}`} disabled={qty >= product.stock_qty} onClick={() => setQuantity(product.id, qty + 1)}><svg aria-hidden="true" viewBox="0 0 20 20"><path d="M10 4v12M4 10h12" /></svg></button>
                   </div>
-                  <strong className="pos-line-total">{money(product.price_cents * qty)}</strong>
+                  <label className="pos-discount-field">Discount %<input type="number" min="0" max="100" step="1" value={((activeCart.find((line) => line.productId === product.id)?.discountBps ?? 0) / 100)} onChange={(event) => setDiscount(product.id, Math.max(0, Math.min(10000, Math.round(Number(event.target.value || 0) * 100))))} aria-label={`Manual discount percent for ${product.name}`} disabled={!isOnline} /></label>
+                  <strong className="pos-line-total">{money(product.price_cents * qty - discountCents)}{discountCents > 0 && <small className="pos-discount-note">−{money(discountCents)} discount</small>}</strong>
                 </li>
               ))}
             </ul>
           )}
 
-          <form action={completeAction} className="pos-checkout-form">
-            <input type="hidden" name="items" value={JSON.stringify(activeCart.map((line) => ({ product_id: line.productId, qty: line.qty })))} />
+          <form action={completeAction} className="pos-checkout-form" onSubmit={async (event) => {
+            if (isOnline) return;
+            event.preventDefault();
+            if (method !== 'cash' || !shift || activeCart.length === 0 || receivedCents === null || receivedCents < totalCents) {
+              setOfflineMessage('Offline checkout requires an open shift, a non-empty cart, and sufficient cash received.');
+              return;
+            }
+            if (subtotalCents > 0 && Math.ceil(discountCents * 10000 / subtotalCents) > cashierDiscountLimitBps) {
+              setOfflineMessage('Manager approval is required for this discount. Reconnect before completing the sale.');
+              return;
+            }
+            const queued: OfflineQueueItem = { key: crypto.randomUUID(), shiftId: shift.id, items: cartProducts.map(({ product, qty, discountCents }) => ({ product_id: product.id, qty, unit_price_cents: product.price_cents, discount_cents: discountCents })), cashReceivedCents: receivedCents, status: 'queued', createdAt: new Date().toISOString() };
+            try {
+              await putQueuedSale(queued);
+              setOfflineQueue((current) => [...current, queued]);
+              setCart([]);
+              setCashReceived('');
+              setOfflineMessage('Cash sale saved on this register and will sync after reconnection.');
+            } catch {
+              setOfflineMessage('This browser could not store the sale offline. Keep the cart open and reconnect before checkout.');
+            }
+          }}>
+            <input type="hidden" name="items" value={JSON.stringify(activeCart.map((line) => ({ product_id: line.productId, qty: line.qty, discount_percent_bps: line.discountBps ?? 0 })))} />
+            <input type="hidden" name="basketDiscountBps" value={basketDiscountBps} />
             {activeHeldSaleId && <input type="hidden" name="heldSaleId" value={activeHeldSaleId} />}
             <input type="hidden" name="method" value={method} />
+            <details className="pos-manager-approval"><summary>Manager approval for a larger discount</summary><label>Manager email<input type="email" name="managerEmail" value={managerEmail} onChange={(event) => setManagerEmail(event.target.value)} autoComplete="username" disabled={!isOnline || salePending} /></label><label>Manager password<input type="password" name="managerPassword" value={managerPassword} onChange={(event) => setManagerPassword(event.target.value)} autoComplete="current-password" disabled={!isOnline || salePending} /></label><small>Credentials are verified for this sale and are not saved.</small></details>
             {method === 'cash' && <input type="hidden" name="reference" value="" />}
             {method !== 'cash' && <input type="hidden" name="cashReceived" value="" />}
+            <label className="pos-discount-field pos-basket-discount">Basket discount %<input type="number" min="0" max="100" step="1" value={basketDiscountBps / 100} onChange={(event) => setBasketDiscountBps(Math.max(0, Math.min(10000, Math.round(Number(event.target.value || 0) * 100))))} disabled={!isOnline || salePending} /></label>
             <div className="pos-total-row"><span>Subtotal</span><strong>{money(subtotalCents)}</strong></div>
+            {discountCents > 0 && <div className="pos-total-row"><span>Discount</span><strong>−{money(discountCents)}</strong></div>}
             <div className="pos-total-row pos-rounding-row"><span>VAT included</span><span>{money(vatCents)}</span></div>
             {method === 'cash' && <div className="pos-total-row pos-rounding-row"><span>Cash rounding</span><span>{roundingCents < 0 ? '−' : '+'}{money(Math.abs(roundingCents))}</span></div>}
             <div className="pos-total-row pos-grand-total"><span>Total due</span><strong>{money(totalCents)}</strong></div>
@@ -409,9 +531,11 @@ export function PosScreen({
                 ))}
               </ul>
               <div className="pos-receipt-total"><span>Subtotal</span><strong>{money(saleState.receipt.subtotalCents)}</strong></div>
+              {saleState.receipt.discountCents > 0 && <div className="pos-receipt-total"><span>Discount</span><strong>−{money(saleState.receipt.discountCents)}</strong></div>}
               <div className="pos-receipt-total"><span>VAT included</span><strong>{money(saleState.receipt.vatCents)}</strong></div>
               {saleState.receipt.roundingCents !== 0 && <div className="pos-receipt-total"><span>Cash rounding</span><strong>{saleState.receipt.roundingCents < 0 ? '−' : '+'}{money(Math.abs(saleState.receipt.roundingCents))}</strong></div>}
               <div className="pos-receipt-total pos-receipt-grand"><span>Total</span><strong>{money(saleState.receipt.totalCents)}</strong></div>
+              {saleState.receipt.payments.length > 0 && <div className="pos-receipt-total"><span>Payment</span><strong>{saleState.receipt.payments.map((payment) => `${payment.method.toUpperCase()} ${money(payment.amountCents)}`).join(', ')}</strong></div>}
               <p>Thank you.</p>
             </section>
           )}

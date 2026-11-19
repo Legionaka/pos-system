@@ -1,0 +1,23 @@
+'use client';
+
+import { useActionState } from 'react';
+import { saveCashierDiscountLimitAction, savePromotionAction, saveSalesTargetAction } from '../actions';
+
+type Product = { id: string; name: string; sku: string };
+type Staff = { id: string; name: string | null; email: string | null };
+type Promotion = { id: string; name: string; discount_type: 'percent' | 'fixed'; discount_value: number; starts_on: string; ends_on: string; active: boolean; product_id: string | null };
+
+function Feedback({ state }: { state: { ok: boolean; message: string } | null }) {
+  return state?.message ? <p className={state.ok ? 'workspace-success' : 'workspace-alert'} role={state.ok ? 'status' : 'alert'}>{state.message}</p> : null;
+}
+
+export function PosSettingsForms({ limitPercent, products, staff, promotions }: { limitPercent: number; products: Product[]; staff: Staff[]; promotions: Promotion[] }) {
+  const [limitState, limitAction, limitPending] = useActionState(saveCashierDiscountLimitAction, null);
+  const [promotionState, promotionAction, promotionPending] = useActionState(savePromotionAction, null);
+  const [targetState, targetAction, targetPending] = useActionState(saveSalesTargetAction, null);
+  return <div className="workspace-stack">
+    <section className="workspace-card"><div className="workspace-card-heading"><div><p className="workspace-eyebrow">DISCOUNT AUTHORITY</p><h2>Cashier manual discount limit</h2><p>Discounts above this limit require manager approval during checkout.</p></div></div><form action={limitAction} className="workspace-form"><label>Maximum percent<input name="limitPercent" type="number" min="0" max="100" step="1" defaultValue={limitPercent} required /></label><button className="workspace-button" type="submit" disabled={limitPending}>{limitPending ? 'Saving…' : 'Save limit'}</button></form><Feedback state={limitState} /></section>
+    <section className="workspace-card"><div className="workspace-card-heading"><div><p className="workspace-eyebrow">SCHEDULED OFFERS</p><h2>Create a promotion</h2><p>Choose a store-wide offer or limit it to one product. Active offers use Johannesburg local dates.</p></div></div><form action={promotionAction} className="workspace-form"><div className="workspace-form-grid"><label>Promotion name<input name="name" required minLength={2} maxLength={100} /></label><label>Applies to<select name="productId" defaultValue=""><option value="">All products</option>{products.map((product) => <option value={product.id} key={product.id}>{product.name} · {product.sku}</option>)}</select></label><label>Discount type<select name="type" defaultValue="percent"><option value="percent">Percent</option><option value="fixed">Fixed amount per item (R)</option></select></label><label>Value<input name="value" type="number" min="0.01" step="0.01" required /></label><label>Starts<input name="startsOn" type="date" required /></label><label>Ends<input name="endsOn" type="date" required /></label><label>Status<select name="active" defaultValue="true"><option value="true">Active</option><option value="false">Inactive</option></select></label></div><button className="workspace-button" type="submit" disabled={promotionPending}>{promotionPending ? 'Saving…' : 'Save promotion'}</button></form><Feedback state={promotionState} />{promotions.length > 0 && <div className="workspace-table-wrap"><table className="workspace-table"><thead><tr><th>Promotion</th><th>Type</th><th>Dates</th><th>Status</th></tr></thead><tbody>{promotions.map((item) => <tr key={item.id}><td>{item.name}</td><td>{item.discount_type === 'percent' ? `${item.discount_value / 100}%` : `R${(item.discount_value / 100).toFixed(2)}`}</td><td>{item.starts_on} – {item.ends_on}</td><td>{item.active ? 'Active' : 'Inactive'}</td></tr>)}</tbody></table></div>}</section>
+    <section className="workspace-card"><div className="workspace-card-heading"><div><p className="workspace-eyebrow">DAILY SALES GOALS</p><h2>Set a sales target</h2><p>Leave staff selection on Store target to set a total target for the day.</p></div></div><form action={targetAction} className="workspace-form"><div className="workspace-form-grid"><label>Date<input name="date" type="date" required /></label><label>Target scope<select name="userId" defaultValue=""><option value="">Store total</option>{staff.map((person) => <option value={person.id} key={person.id}>{person.name || person.email || 'Cashier'}</option>)}</select></label><label>Target amount (R)<input name="amount" type="number" min="0.01" step="0.01" required /></label></div><button className="workspace-button" type="submit" disabled={targetPending}>{targetPending ? 'Saving…' : 'Save daily target'}</button></form><Feedback state={targetState} /></section>
+  </div>;
+}

@@ -47,7 +47,7 @@ async function CatalogContent() {
   const [productsResult, categoriesResult] = await Promise.all([
     supabase
       .from('products')
-      .select('id, sku, barcode, name, price_cents, tax_category, stock_qty, reorder_at, active, category_id, image_path, updated_at')
+      .select('id, sku, barcode, name, price_cents, tax_category, stock_qty, reorder_at, active, category_id, variant_group_id, image_path, updated_at')
       .order('name'),
     supabase.from('categories').select('id, name').order('name'),
   ]);

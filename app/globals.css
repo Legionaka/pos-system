@@ -1102,6 +1102,14 @@ a {
 .pos-quantity button:disabled { color: #c3cbc4; cursor: not-allowed; }
 .pos-quantity span { min-width: 12px; color: var(--pos-ink); font-size: 12px; text-align: center; }
 .pos-line-total { grid-column: 1 / -1; justify-self: end; margin-top: -3px; font-size: 12px; font-weight: 600; }
+.pos-line-total small { display: block; color: #795821; font-size: 10px; font-weight: 500; text-align: right; }
+.pos-discount-field { display: flex; align-items: center; gap: 6px; color: var(--pos-muted); font-size: 10px; }
+.pos-discount-field input { width: 58px; min-height: 30px; padding: 4px 6px; border: 1px solid var(--pos-line); border-radius: 6px; color: var(--pos-ink); font: inherit; }
+.pos-manager-approval { margin: 8px 0; padding: 9px 10px; border: 1px solid var(--pos-line); border-radius: 8px; color: var(--pos-muted); font-size: 11px; }
+.pos-manager-approval summary { cursor: pointer; color: #415d4e; font-weight: 600; }
+.pos-manager-approval label { display: grid; gap: 4px; margin-top: 8px; }
+.pos-manager-approval input { min-height: 34px; padding: 6px 8px; border: 1px solid var(--pos-line); border-radius: 6px; font: inherit; }
+.pos-manager-approval small { display: block; margin-top: 7px; }
 .pos-checkout-form { display: flex; flex-direction: column; margin-top: auto; padding-top: 16px; }
 .pos-total-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; color: #66756d; font-size: 12px; }
 .pos-total-row strong { color: #31463d; font-weight: 600; }

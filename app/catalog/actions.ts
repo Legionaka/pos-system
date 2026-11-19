@@ -184,3 +184,46 @@ export async function createCategoryAction(
   revalidatePath('/pos');
   return success('Category added.');
 }
+
+export async function importCatalogRowsAction(_previousState: CatalogActionState, formData: FormData): Promise<CatalogActionState> {
+  const supabase = await getActiveManager();
+  if (!supabase) return { message: 'An active manager or owner account is required.' };
+  const parsed = z.string().max(1_000_000).safeParse(formData.get('rows'));
+  if (!parsed.success) return { message: 'Choose a catalog CSV file under 1 MB.' };
+  let raw: unknown;
+  try { raw = JSON.parse(parsed.data); } catch { return { message: 'The import preview could not be read. Choose the file again.' }; }
+  const rowSchema = z.array(z.object({
+    sku: z.string().trim().min(2).max(64).regex(/^[\w.-]+$/),
+    barcode: z.string().trim().max(64),
+    name: z.string().trim().min(2).max(120),
+    price_cents: z.number().int().min(0).max(999_999_999_99),
+    tax_category: z.enum(['standard', 'zero_rated', 'exempt']),
+    reorder_at: z.number().int().min(0).max(2_147_483_647),
+    active: z.boolean(),
+  })).min(1).max(1000);
+  const rows = rowSchema.safeParse(raw);
+  if (!rows.success) return { message: 'Import rows contain invalid required fields or values.' };
+  const skus = rows.data.map((row) => row.sku.toLocaleLowerCase());
+  const barcodes = rows.data.map((row) => row.barcode).filter(Boolean);
+  if (new Set(skus).size !== skus.length || new Set(barcodes).size !== barcodes.length) return { message: 'The CSV contains duplicate SKUs or barcodes.' };
+  const { error } = await supabase.from('products').upsert(rows.data.map((row) => ({ ...row, barcode: row.barcode || null })), { onConflict: 'sku' });
+  if (error) return { message: 'Catalog import was rejected. Check that SKUs and barcodes do not conflict with other products.' };
+  revalidatePath('/catalog');
+  revalidatePath('/pos');
+  revalidatePath('/inventory');
+  return { ok: true, message: `${rows.data.length} catalog rows imported. Existing matching SKUs were updated; stock quantities were left unchanged.`, version: crypto.randomUUID() };
+}
+
+export async function groupProductVariantsAction(_previousState: CatalogActionState, formData: FormData): Promise<CatalogActionState> {
+  const supabase = await getActiveManager();
+  if (!supabase) return { message: 'An active manager or owner account is required.' };
+  let ids: unknown;
+  try { ids = JSON.parse(String(formData.get('productIds') ?? '')); } catch { return { message: 'Select products to group as variants.' }; }
+  const parsed = z.array(z.string().uuid()).min(2).max(50).safeParse(ids);
+  if (!parsed.success || new Set(parsed.data).size !== parsed.data.length) return { message: 'Select between two and fifty unique products.' };
+  const { error } = await supabase.rpc('save_variant_group', { p_product_ids: parsed.data });
+  if (error) return { message: 'The selected products could not be grouped.' };
+  revalidatePath('/catalog');
+  revalidatePath('/pos');
+  return success('Product variants grouped. Their prices, barcodes, and stock remain independent.');
+}

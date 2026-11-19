@@ -11,13 +11,17 @@ export default async function OwnerShiftsPage() {
     .select('id, user_id, opened_at, closed_at, opening_cash_cents, expected_cash_cents, counted_cash_cents, cash_variance_cents')
     .order('opened_at', { ascending: false }).limit(200);
   const userIds = [...new Set((rows ?? []).map((row) => row.user_id))];
+  const shiftIds = (rows ?? []).map((row) => row.id);
+  const { data: movementRows, error: movementsError } = shiftIds.length
+    ? await supabase.from('cash_movements').select('id, shift_id, movement_type, amount_cents, reason, created_at').in('shift_id', shiftIds).order('created_at')
+    : { data: [], error: null };
   const { data: profiles, error: profileError } = userIds.length
     ? await supabase.from('profiles').select('id, name').in('id', userIds)
     : { data: [], error: null };
   const names = new Map((profiles ?? []).map((profile) => [profile.id, profile.name || 'Staff member']));
-  const shifts: ShiftRecord[] = (rows ?? []).map((row) => ({ ...row, cashier_name: names.get(row.user_id) ?? 'Staff member' }));
+  const shifts: ShiftRecord[] = (rows ?? []).map((row) => ({ ...row, cashier_name: names.get(row.user_id) ?? 'Staff member', cash_movements: (movementRows ?? []).filter((movement) => movement.shift_id === row.id) }));
   return <div className="workspace-page"><WorkspaceHeader eyebrow="OWNER WORKSPACE / CASH CONTROL" title="Shifts" description="Review till openings, cash counts, and variances. Showing up to 200 recent shifts." />
-    {(error || profileError) && <p className="workspace-alert" role="alert">Shift data could not be loaded.</p>}
+    {(error || profileError || movementsError) && <p className="workspace-alert" role="alert">Shift data could not be loaded.</p>}
     <ShiftTable shifts={shifts} referenceTime={getRequestTime()} />
   </div>;
 }
